@@ -540,7 +540,7 @@ blueprint:
         fan_color_low:
           name: Fan Low - LED Color
           description: LED bar color for low speed (1-33%)
-          default: "Blue"
+          default: "Aqua"
           selector:
             select:
               mode: dropdown
@@ -548,7 +548,7 @@ blueprint:
         fan_color_medium:
           name: Fan Medium - LED Color
           description: LED bar color for medium speed (34-66%)
-          default: "Lemon"
+          default: "Cyan"
           selector:
             select:
               mode: dropdown
@@ -556,7 +556,7 @@ blueprint:
         fan_color_high:
           name: Fan High - LED Color
           description: LED bar color for high speed (67-100%)
-          default: "Red"
+          default: "Blue"
           selector:
             select:
               mode: dropdown
