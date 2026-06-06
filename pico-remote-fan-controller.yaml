@@ -1,6 +1,6 @@
 blueprint:
   name: Lutron Pico Remote to Fan & Light Controller
-  description: Control a fan and its integrated light using a 5-button Lutron Pico Remote with debouncing.
+  description: Control a fan and its integrated light using a 5-button Lutron Pico Remote.
   domain: automation
   input:
     pico_remote:
@@ -28,13 +28,13 @@ trigger:
     domain: lutron_caseta
     type: press
     subtype: 'on'
-    id: button_on
+    id: pico_on
   - platform: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
     subtype: 'off'
-    id: button_off
+    id: pico_off
   - platform: device
     device_id: !input pico_remote
     domain: lutron_caseta
@@ -61,7 +61,7 @@ action:
       # ON Button -> Turn Fan On (Low Preset)
       - conditions:
           - condition: trigger
-            id: button_on
+            id: pico_on
         sequence:
           - action: fan.turn_on
             target:
@@ -72,7 +72,7 @@ action:
       # OFF Button -> Turn Fan Off
       - conditions:
           - condition: trigger
-            id: button_off
+            id: pico_off
         sequence:
           - action: fan.turn_off
             target:
