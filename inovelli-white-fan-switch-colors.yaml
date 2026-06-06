@@ -1,539 +1,1086 @@
 blueprint:
-  name: Inovelli Matter Switch Tap Sequences (with Injected LED Colors & Sections)
-  description: A complete fork of jay-kub's multi-tap handler, containing the required top-level section schemas to render the collapsible UI zippies correctly.
+  name: Inovelli White Fan Switch - Tap Sequences with LED Colors
+  description: |
+    ## Inovelli White Fan Switch — Tap Sequences with LED Bar Colors
+
+    A fork of jay-kub's excellent *Inovelli Matter Switch Tap Sequences*
+    blueprint, built for the **White Series Fan Switch (VTM35-SN)** and the
+    **White Fan/Light Canopy Module (VTM36)**.
+
+    ### What this adds
+
+    Everything jay-kub's blueprint does, **plus** an easy way to set the
+    switch's LED bar color for *each* button action. Pick a color next to any
+    tap/hold action and the LED bar changes to that color right before the
+    action runs — perfect for showing fan speed, scene, or mode at a glance.
+
+    Every color defaults to **"No Change"**, so the LED bar is only ever
+    touched for the actions you explicitly assign a color to.
+
+    ### This blueprint will:
+
+      - Perform predefined actions when a button is tapped (1–5×), held, or released
+      - Optionally set the LED bar color for each of those actions
+      - Bind the Inovelli switch's light entity to a target light (on/off + brightness)
+      - Bind a target fan to the Config button (Held = Off, 1× = Low, 2× = Med, 3× = High)
+
+    ### Setting up the LED Bar Color
+
+    The White Series LED bar color is controlled by a **select** entity (found
+    under Settings > Devices & services > Matter > *your device* > Controls).
+    Select that entity in the **LED Bar Color** section below.
+
+    Supported colors (the only values the switch accepts):
+    **White, Red, Orange, Lemon, Lime, Green, Teal, Cyan, Aqua, Blue,
+    Violet, Magenta, Pink**
+
+    ### Light Binding
+
+    Light binding syncs the on/off state and brightness from the Inovelli
+    switch to a target light. For the smoothest result:
+
+      - Slow the dimming speed on the Inovelli switch to account for lag
+      - Set transition speed to 0 on all devices
+      - Match the default "on" brightness across devices
+      - If your target light supports Matter binding, prefer that and disable light binding here
+
+    ### Supported Models
+      - VTM35-SN (White Fan Switch)
+      - VTM36 (White Fan/Light Canopy Module)
+      - VTM30-SN / VTM31-SN (White On/Off & Dimmer) also work for the button + LED features
+
+    ### Credits
+
+    Forked from jay-kub's *Inovelli Matter Switch Tap Sequences* (v0.3.4):
+    https://github.com/jay-kub/inovelli-matter-switch-tap-sequences
+
+    #### Fork Version 1.0.0
+    Added per-action LED bar color selection.
   domain: automation
-  
-  # --- This layout block creates the visual UI zippies ---
-  sections:
-    light_sync:
-      name: Light & Dimmer Synchronization Options
-      icon: mdi:sync
-    up_button:
-      name: Up Button Sequences (1x - 5x Taps)
-      icon: mdi:arrow-up-bold-box
-    down_button:
-      name: Down Button Sequences (1x - 5x Taps)
-      icon: mdi:arrow-down-bold-box
-    config_button:
-      name: Config Button Sequences (1x - 5x Taps)
-      icon: mdi:cog
-
+  author: jpn627 (fork of jay-kub)
+  homeassistant:
+    min_version: 2024.8.0
   input:
-    entity_config:
-      name: Config button entity
-      selector:
-        entity:
-          domain: event
-    entity_up:
-      name: Up button entity
-      selector:
-        entity:
-          domain: event
-    entity_down:
-      name: Down button entity
-      selector:
-        entity:
-          domain: event
-    led_select_entity:
-      name: LED Color Select Entity
-      description: The select entity that controls the Inovelli switch's LED bar color.
-      selector:
-        entity:
-          domain: select
+    inovelli_events:
+      name: Inovelli Switch Entities
+      description:
+        "Example: the Event Entity for Up can be found here: Settings > Devices & services > Matter > # Devices > *Select
+        your device* > Events > Up > Settings Icon > entity_id"
+      icon: mdi:devices
+      input:
+        entity_up:
+          name: Event Entity for Up
+          description: The Event Entity for Up taps
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
+        entity_down:
+          name: Event Entity for Down
+          description: The Event Entity for Down taps
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
+        entity_config:
+          name: Event Entity for Config
+          description: The Event Entity for Config taps
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
 
-    # --- ZIPPIE 1: LIGHT SYNC ---
-    entity_light:
-      name: (Optional) Local Switch Light Entity
-      description: The local light entity of the physical Inovelli switch used for brightness synchronization.
-      default: []
-      input_section: light_sync
-      selector:
-        entity:
-          domain: light
-    target_light:
-      name: (Optional) Target Light Entity
-      description: The master smart light or canopy light entity to sync brightness and states with.
-      default: []
-      input_section: light_sync
-      selector:
-        entity:
-          domain: light
-    reverse_sync:
-      name: Enable Reverse Synchronization
-      description: Synchronize state changes from the target light back to the local switch.
-      default: false
-      input_section: light_sync
-      selector:
-        boolean: {}
-    min_brightness:
-      name: Minimum Brightness
-      description: The minimum scaling brightness value for your light fixtures.
-      default: 1
-      input_section: light_sync
-      selector:
-        number:
-          min: 1
-          max: 255
+    led_inputs:
+      name: LED Bar Color
+      description: |
+        Select the switch's LED bar color **select** entity. This is only used
+        for actions where you choose a color other than "No Change".
+      icon: mdi:palette
+      collapsed: true
+      input:
+        led_select_entity:
+          name: LED Bar Color Select Entity
+          description: The select entity that controls the Inovelli switch's LED bar color.
+          default: []
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: select
+              multiple: false
 
-    # --- ZIPPIE 2: UP BUTTON ---
-    up1:
-      name: Up button - 1 tap actions
-      default: []
-      input_section: up_button
-      selector:
-        action: {}
-    color_up1:
-      name: Up button - 1 tap LED Color
-      default: White
-      input_section: up_button
-      selector:
-        select:
-          options: &led_colors
-            - "White"
-            - "Red"
-            - "Green"
-            - "Blue"
-            - "Cyan"
-            - "Magenta"
-            - "Yellow"
-            - "Orange"
-            - "Aqua"
-            - "Purple"
-            - "Pink"
+    up_inputs:
+      name: Up
+      icon: mdi:arrow-up-thick
+      collapsed: true
+      input:
+        up1:
+          name: Single
+          description: When Up is pressed 1 time
+          default: []
+          selector:
+            action: {}
+        color_up1:
+          name: Single - LED Color
+          description: LED bar color to set when Up is pressed 1 time
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: &led_colors
+                - "No Change"
+                - "White"
+                - "Red"
+                - "Orange"
+                - "Lemon"
+                - "Lime"
+                - "Green"
+                - "Teal"
+                - "Cyan"
+                - "Aqua"
+                - "Blue"
+                - "Violet"
+                - "Magenta"
+                - "Pink"
+        up2:
+          name: Double
+          description: When Up is pressed 2 times
+          default: []
+          selector:
+            action: {}
+        color_up2:
+          name: Double - LED Color
+          description: LED bar color to set when Up is pressed 2 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        up3:
+          name: Triple
+          description: When Up is pressed 3 times
+          default: []
+          selector:
+            action: {}
+        color_up3:
+          name: Triple - LED Color
+          description: LED bar color to set when Up is pressed 3 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        up4:
+          name: Quadruple
+          description: When Up is pressed 4 times
+          default: []
+          selector:
+            action: {}
+        color_up4:
+          name: Quadruple - LED Color
+          description: LED bar color to set when Up is pressed 4 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        up5:
+          name: Quintuple
+          description: When Up is pressed 5 times
+          default: []
+          selector:
+            action: {}
+        color_up5:
+          name: Quintuple - LED Color
+          description: LED bar color to set when Up is pressed 5 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        upHeld:
+          name: Held
+          description: When Up is held
+          default: []
+          selector:
+            action: {}
+        color_upHeld:
+          name: Held - LED Color
+          description: LED bar color to set when Up is held
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        upReleased:
+          name: Released
+          description: When Up is released
+          default: []
+          selector:
+            action: {}
+        color_upReleased:
+          name: Released - LED Color
+          description: LED bar color to set when Up is released
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
 
-    up2:
-      name: Up button - 2 tap actions
-      default: []
-      input_section: up_button
-      selector:
-        action: {}
-    color_up2:
-      name: Up button - 2 tap LED Color
-      default: Cyan
-      input_section: up_button
-      selector:
-        select:
-          options: *led_colors
+    down_inputs:
+      name: Down
+      icon: mdi:arrow-down-thick
+      collapsed: true
+      input:
+        down1:
+          name: Single
+          description: When Down is pressed 1 time
+          default: []
+          selector:
+            action: {}
+        color_down1:
+          name: Single - LED Color
+          description: LED bar color to set when Down is pressed 1 time
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        down2:
+          name: Double
+          description: When Down is pressed 2 times
+          default: []
+          selector:
+            action: {}
+        color_down2:
+          name: Double - LED Color
+          description: LED bar color to set when Down is pressed 2 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        down3:
+          name: Triple
+          description: When Down is pressed 3 times
+          default: []
+          selector:
+            action: {}
+        color_down3:
+          name: Triple - LED Color
+          description: LED bar color to set when Down is pressed 3 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        down4:
+          name: Quadruple
+          description: When Down is pressed 4 times
+          default: []
+          selector:
+            action: {}
+        color_down4:
+          name: Quadruple - LED Color
+          description: LED bar color to set when Down is pressed 4 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        down5:
+          name: Quintuple
+          description: When Down is pressed 5 times
+          default: []
+          selector:
+            action: {}
+        color_down5:
+          name: Quintuple - LED Color
+          description: LED bar color to set when Down is pressed 5 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        downHeld:
+          name: Held
+          description: When Down is held
+          default: []
+          selector:
+            action: {}
+        color_downHeld:
+          name: Held - LED Color
+          description: LED bar color to set when Down is held
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        downReleased:
+          name: Released
+          description: When Down is released
+          default: []
+          selector:
+            action: {}
+        color_downReleased:
+          name: Released - LED Color
+          description: LED bar color to set when Down is released
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
 
-    up3:
-      name: Up button - 3 tap actions
-      default: []
-      input_section: up_button
-      selector:
-        action: {}
-    color_up3:
-      name: Up button - 3 tap LED Color
-      default: Blue
-      input_section: up_button
-      selector:
-        select:
-          options: *led_colors
+    config_inputs:
+      name: Config
+      icon: mdi:button-pointer
+      collapsed: true
+      input:
+        config1:
+          name: Single
+          description: When Config is pressed 1 time
+          default: []
+          selector:
+            action: {}
+        color_config1:
+          name: Single - LED Color
+          description: LED bar color to set when Config is pressed 1 time
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        config2:
+          name: Double
+          description: When Config is pressed 2 times
+          default: []
+          selector:
+            action: {}
+        color_config2:
+          name: Double - LED Color
+          description: LED bar color to set when Config is pressed 2 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        config3:
+          name: Triple
+          description: When Config is pressed 3 times
+          default: []
+          selector:
+            action: {}
+        color_config3:
+          name: Triple - LED Color
+          description: LED bar color to set when Config is pressed 3 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        config4:
+          name: Quadruple
+          description: When Config is pressed 4 times
+          default: []
+          selector:
+            action: {}
+        color_config4:
+          name: Quadruple - LED Color
+          description: LED bar color to set when Config is pressed 4 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        config5:
+          name: Quintuple
+          description: When Config is pressed 5 times
+          default: []
+          selector:
+            action: {}
+        color_config5:
+          name: Quintuple - LED Color
+          description: LED bar color to set when Config is pressed 5 times
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        configHeld:
+          name: Held
+          description: When Config is held
+          default: []
+          selector:
+            action: {}
+        color_configHeld:
+          name: Held - LED Color
+          description: LED bar color to set when Config is held
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        configReleased:
+          name: Released
+          description: When Config is released
+          default: []
+          selector:
+            action: {}
+        color_configReleased:
+          name: Released - LED Color
+          description: LED bar color to set when Config is released
+          default: "No Change"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
 
-    up4:
-      name: Up button - 4 tap actions
-      default: []
-      input_section: up_button
-      selector:
-        action: {}
-    color_up4:
-      name: Up button - 4 tap LED Color
-      default: Purple
-      input_section: up_button
-      selector:
-        select:
-          options: *led_colors
+    binding_inputs:
+      name: Light Binding
+      icon: mdi:sync
+      collapsed: true
+      input:
+        entity_light:
+          name: Inovelli Switch Light
+          description: The light entity for the Inovelli Switch
+          default: []
+          selector:
+            entity:
+              filter:
+              - domain: light
+              multiple: false
+        target_light:
+          name: Target Light
+          description: |
+            Select the light entity that will be synced to the Inovelli Switch
+            Hint: to control multiple lights, create a light group
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: false
+        brightness_sync:
+          name: Brightness Sync
+          description: |
+            Sync the brightness from the Inovelli Switch to the Target Light
+            Note: this setting must be disabled if your Switch Mode is set to On/Off
+          default: true
+          selector:
+            boolean: {}
+        reverse_sync:
+          name: Reverse Sync
+          description: If the Target Light is toggled on/off by an outside source, the Inovelli Switch will sync
+          default: false
+          selector:
+            boolean: {}
+        min_brightness:
+          name: Minimum Brightness
+          description: Set the minimum brightness percent for the Target Light
+          default: 1
+          selector:
+            number:
+              min: 1.0
+              max: 100.0
+              step: 1.0
+              mode: slider
 
-    up5:
-      name: Up button - 5 tap actions
-      default: []
-      input_section: up_button
-      selector:
-        action: {}
-    color_up5:
-      name: Up button - 5 tap LED Color
-      default: Pink
-      input_section: up_button
-      selector:
-        select:
-          options: *led_colors
-
-    # --- ZIPPIE 3: DOWN BUTTON ---
-    down1:
-      name: Down button - 1 tap actions
-      default: []
-      input_section: down_button
-      selector:
-        action: {}
-    color_down1:
-      name: Down button - 1 tap LED Color
-      default: Red
-      input_section: down_button
-      selector:
-        select:
-          options: *led_colors
-
-    down2:
-      name: Down button - 2 tap actions
-      default: []
-      input_section: down_button
-      selector:
-        action: {}
-    color_down2:
-      name: Down button - 2 tap LED Color
-      default: Orange
-      input_section: down_button
-      selector:
-        select:
-          options: *led_colors
-
-    down3:
-      name: Down button - 3 tap actions
-      default: []
-      input_section: down_button
-      selector:
-        action: {}
-    color_down3:
-      name: Down button - 3 tap LED Color
-      default: Yellow
-      input_section: down_button
-      selector:
-        select:
-          options: *led_colors
-
-    down4:
-      name: Down button - 4 tap actions
-      default: []
-      input_section: down_button
-      selector:
-        action: {}
-    color_down4:
-      name: Down button - 4 tap LED Color
-      default: Magenta
-      input_section: down_button
-      selector:
-        select:
-          options: *led_colors
-
-    down5:
-      name: Down button - 5 tap actions
-      default: []
-      input_section: down_button
-      selector:
-        action: {}
-    color_down5:
-      name: Down button - 5 tap LED Color
-      default: Red
-      input_section: down_button
-      selector:
-        select:
-          options: *led_colors
-
-    # --- ZIPPIE 4: CONFIG BUTTON ---
-    config1:
-      name: Config button - 1 tap actions
-      default: []
-      input_section: config_button
-      selector:
-        action: {}
-    color_config1:
-      name: Config button - 1 tap LED Color
-      default: White
-      input_section: config_button
-      selector:
-        select:
-          options: *led_colors
-
-    config2:
-      name: Config button - 2 tap actions
-      default: []
-      input_section: config_button
-      selector:
-        action: {}
-    color_config2:
-      name: Config button - 2 tap LED Color
-      default: White
-      input_section: config_button
-      selector:
-        select:
-          options: *led_colors
-
-    config3:
-      name: Config button - 3 tap actions
-      default: []
-      input_section: config_button
-      selector:
-        action: {}
-    color_config3:
-      name: Config button - 3 tap LED Color
-      default: White
-      input_section: config_button
-      selector:
-        select:
-          options: *led_colors
-
-    config4:
-      name: Config button - 4 tap actions
-      default: []
-      input_section: config_button
-      selector:
-        action: {}
-    color_config4:
-      name: Config button - 4 tap LED Color
-      default: White
-      input_section: config_button
-      selector:
-        select:
-          options: *led_colors
-
-    config5:
-      name: Config button - 5 tap actions
-      default: []
-      input_section: config_button
-      selector:
-        action: {}
-    color_config5:
-      name: Config button - 5 tap LED Color
-      default: White
-      input_section: config_button
-      selector:
-        select:
-          options: *led_colors
-
+    fan_inputs:
+      name: Fan Binding
+      icon: mdi:fan
+      collapsed: true
+      input:
+        target_fan:
+          name: Target Fan
+          description: |
+            Select the fan entity that will be synced to the Config button
+            (Held - Off)  (Single - Low) (Double - Medium) (Triple - High)
+          default: []
+          selector:
+            entity:
+              filter:
+              - domain: fan
+              multiple: false
+  source_url: https://github.com/jpn627/homeassistant/blob/main/inovelli-white-fan-switch-colors.yaml
+mode: queued
+max_exceeded: silent
 variables:
-  local_light: !input entity_light
-  remote_light: !input target_light
-  is_reverse_sync: !input reverse_sync
-  scaled_min: !input min_brightness
+  reverseSyncEnabled: !input reverse_sync
+  inovelliLight: !input entity_light
+  targetFan: !input target_fan
+  brightnessSyncEnabled: !input brightness_sync
+  ledSelect: !input led_select_entity
+  colorUp1: !input color_up1
+  colorUp2: !input color_up2
+  colorUp3: !input color_up3
+  colorUp4: !input color_up4
+  colorUp5: !input color_up5
+  colorUpHeld: !input color_upHeld
+  colorUpReleased: !input color_upReleased
+  colorDown1: !input color_down1
+  colorDown2: !input color_down2
+  colorDown3: !input color_down3
+  colorDown4: !input color_down4
+  colorDown5: !input color_down5
+  colorDownHeld: !input color_downHeld
+  colorDownReleased: !input color_downReleased
+  colorConfig1: !input color_config1
+  colorConfig2: !input color_config2
+  colorConfig3: !input color_config3
+  colorConfig4: !input color_config4
+  colorConfig5: !input color_config5
+  colorConfigHeld: !input color_configHeld
+  colorConfigReleased: !input color_configReleased
 
 trigger:
   - platform: state
-    entity_id: !input entity_config
-    id: config
-  - platform: state
     entity_id: !input entity_up
+    not_from:
+    - unavailable
     id: up
   - platform: state
     entity_id: !input entity_down
+    not_from:
+    - unavailable
     id: down
   - platform: state
+    entity_id: !input entity_config
+    not_from:
+    - unavailable
+    id: config
+  - platform: state
     entity_id: !input entity_light
-    id: local_light_changed
+    id: turnOff
+    from: "on"
+    to: "off"
+  - platform: state
+    enabled: '{{ inovelliLight is not none and not (brightnessSyncEnabled | default(false)) }}'
+    entity_id: !input entity_light
+    id: turnOn
+    from: "off"
+    to: "on"
   - platform: state
     entity_id: !input target_light
-    id: remote_light_changed
+    id: reverseSyncTurnOff
+    from: "on"
+    to: "off"
+  - platform: state
+    entity_id: !input target_light
+    id: reverseSyncTurnOn
+    from: "off"
+    to: "on"
+  - platform: state
+    enabled: '{{ inovelliLight is not none }}'
+    entity_id: !input entity_light
+    attribute: brightness
+    id: turnOnWithBrightness
 
 condition: []
 
 action:
-  - choose:
-      # --- UP BUTTON ---
+- choose:
+  - conditions:
+    - condition: trigger
+      id:
+      - up
+    sequence:
+    - choose:
       - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_1
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: multi_press_1
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUp1 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_up1
-          - choose: []
-            default: !input up1
+              option: "{{ colorUp1 }}"
+        - choose: []
+          default: !input up1
       - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_2
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: multi_press_2
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUp2 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_up2
-          - choose: []
-            default: !input up2
+              option: "{{ colorUp2 }}"
+        - choose: []
+          default: !input up2
       - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_3
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: multi_press_3
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUp3 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_up3
-          - choose: []
-            default: !input up3
+              option: "{{ colorUp3 }}"
+        - choose: []
+          default: !input up3
       - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_4
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: multi_press_4
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUp4 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_up4
-          - choose: []
-            default: !input up4
+              option: "{{ colorUp4 }}"
+        - choose: []
+          default: !input up4
       - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_5
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: multi_press_5
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUp5 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_up5
-          - choose: []
-            default: !input up5
-
-      # --- DOWN BUTTON ---
+              option: "{{ colorUp5 }}"
+        - choose: []
+          default: !input up5
       - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_1
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: long_press
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUpHeld != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_down1
-          - choose: []
-            default: !input down1
+              option: "{{ colorUpHeld }}"
+        - choose: []
+          default: !input upHeld
       - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_2
+        - condition: state
+          entity_id: !input entity_up
+          attribute: event_type
+          state: long_release
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorUpReleased != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_down2
-          - choose: []
-            default: !input down2
+              option: "{{ colorUpReleased }}"
+        - choose: []
+          default: !input upReleased
+  - conditions:
+    - condition: trigger
+      id:
+      - down
+    sequence:
+    - choose:
       - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_3
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: multi_press_1
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDown1 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_down3
-          - choose: []
-            default: !input down3
+              option: "{{ colorDown1 }}"
+        - choose: []
+          default: !input down1
       - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_4
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: multi_press_2
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDown2 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_down4
-          - choose: []
-            default: !input down4
+              option: "{{ colorDown2 }}"
+        - choose: []
+          default: !input down2
       - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_5
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: multi_press_3
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDown3 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_down5
-          - choose: []
-            default: !input down5
-
-      # --- CONFIG BUTTON ---
+              option: "{{ colorDown3 }}"
+        - choose: []
+          default: !input down3
       - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_1
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: multi_press_4
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDown4 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_config1
-          - choose: []
-            default: !input config1
+              option: "{{ colorDown4 }}"
+        - choose: []
+          default: !input down4
       - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_2
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: multi_press_5
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDown5 != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_config2
-          - choose: []
-            default: !input config2
+              option: "{{ colorDown5 }}"
+        - choose: []
+          default: !input down5
       - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_3
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: long_press
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDownHeld != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_config3
-          - choose: []
-            default: !input config3
+              option: "{{ colorDownHeld }}"
+        - choose: []
+          default: !input downHeld
       - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_4
+        - condition: state
+          entity_id: !input entity_down
+          attribute: event_type
+          state: long_release
         sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorDownReleased != 'No Change' }}"
+          then:
           - action: select.select_option
             target:
-              entity_id: !input led
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorDownReleased }}"
+        - choose: []
+          default: !input downReleased
+  - conditions:
+    - condition: trigger
+      id:
+      - config
+    sequence:
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_1
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfig1 != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfig1 }}"
+        - choose: []
+          default: !input config1
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_2
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfig2 != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfig2 }}"
+        - choose: []
+          default: !input config2
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_3
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfig3 != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfig3 }}"
+        - choose: []
+          default: !input config3
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_4
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfig4 != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfig4 }}"
+        - choose: []
+          default: !input config4
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_5
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfig5 != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfig5 }}"
+        - choose: []
+          default: !input config5
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: long_press
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfigHeld != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfigHeld }}"
+        - choose: []
+          default: !input configHeld
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: long_release
+        sequence:
+        - if:
+          - condition: template
+            value_template: "{{ ledSelect not in [none, []] and colorConfigReleased != 'No Change' }}"
+          then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ colorConfigReleased }}"
+        - choose: []
+          default: !input configReleased
+  - conditions:
+      - condition: trigger
+        id:
+          - turnOff
+    sequence:
+    - action: light.turn_off
+      metadata: {}
+      data: {}
+      target:
+        entity_id: !input target_light
+  - conditions:
+      - condition: trigger
+        id:
+          - turnOn
+    sequence:
+    - action: light.turn_on
+      metadata: {}
+      data: {}
+      target:
+        entity_id: !input target_light
+  - conditions:
+      - condition: trigger
+        id:
+          - reverseSyncTurnOff
+          - reverseSyncTurnOn
+    sequence:
+      - if: '{{ reverseSyncEnabled }}'
+        then:
+          - choose:
+              - conditions:
+                  - condition: trigger
+                    id:
+                      - reverseSyncTurnOff
+                sequence:
+                - action: light.turn_off
+                  target:
+                    entity_id: !input entity_light
+                  data: {}
+              - conditions:
+                  - condition: trigger
+                    id:
+                      - reverseSyncTurnOn
+                sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: !input entity_light
+                  data: {}
+  - conditions:
+      - condition: trigger
+        id:
+          - turnOnWithBrightness
+      - condition: state
+        entity_id: !input entity_light
+        state: "on"
+    sequence:
+    - variables:
+        inovelliLightBrightness: |
+          {{ (state_attr(inovelliLight, 'brightness') / 2.55) }}
+        minBrightness: !input min_brightness
+        targetBrightnessPct: |
+          {{ (((100 - minBrightness) / 100 ) * inovelliLightBrightness + minBrightness ) | round(0) }}
+        brightnessSyncEnabled: !input brightness_sync
+    - choose:
+      - conditions: '{{ inovelliLightBrightness != 0 }}'
+        sequence:
+        - action: light.turn_on
+          metadata: {}
+          data:
+            brightness_pct: '{{ targetBrightnessPct }}'
+          target:
+            entity_id: !input target_light
+- if:
+  - condition: template
+    value_template: "{{ targetFan != [] }}"
+  - condition: trigger
+    id:
+      - config
+  then:
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_1
+        sequence:
+        - action: fan.turn_on
+          data:
+            percentage: 33
+          target:
+           entity_id: !input target_fan
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_2
+        sequence:
+        - action: fan.turn_on
+          data:
+            percentage: 66
+          target:
+           entity_id: !input target_fan
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: multi_press_3
+        sequence:
+        - action: fan.turn_on
+          data:
+            percentage: 100
+          target:
+           entity_id: !input target_fan
+      - conditions:
+        - condition: state
+          entity_id: !input entity_config
+          attribute: event_type
+          state: long_press
+        sequence:
+        - action: fan.turn_off
+          target:
+           entity_id: !input target_fan
