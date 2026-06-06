@@ -62,10 +62,31 @@ blueprint:
           step: 1
           unit_of_measurement: seconds
           mode: box
+    quiet_hours_enabled:
+      name: Enable Quiet Hours
+      description: When on, the chime is silenced during the time window below.
+      default: false
+      selector:
+        boolean: {}
+    quiet_start:
+      name: Quiet Hours Start
+      description: Time the quiet window begins (can span midnight).
+      default: "22:00:00"
+      selector:
+        time: {}
+    quiet_end:
+      name: Quiet Hours End
+      description: Time the quiet window ends.
+      default: "07:00:00"
+      selector:
+        time: {}
 
 # Make inputs available to templates
 variables:
   chime: !input chime_sound
+  quiet_enabled: !input quiet_hours_enabled
+  quiet_start: !input quiet_start
+  quiet_end: !input quiet_end
 
 mode: single
 max_exceeded: silent
@@ -79,7 +100,24 @@ trigger:
       - unavailable
       - unknown
 
-condition: []
+condition:
+  # Quiet hours: block the chime when enabled and inside the window.
+  # Handles overnight windows (e.g. 22:00 -> 07:00).
+  - condition: template
+    value_template: >-
+      {% set cur = now().hour * 60 + now().minute %}
+      {% set sp = quiet_start.split(':') %}
+      {% set ep = quiet_end.split(':') %}
+      {% set start = sp[0] | int * 60 + sp[1] | int %}
+      {% set end = ep[0] | int * 60 + ep[1] | int %}
+      {% if start == end %}
+        {% set quiet = false %}
+      {% elif start < end %}
+        {% set quiet = start <= cur < end %}
+      {% else %}
+        {% set quiet = cur >= start or cur < end %}
+      {% endif %}
+      {{ not quiet_enabled or not quiet }}
 
 action:
   - action: media_player.play_media
