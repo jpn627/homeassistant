@@ -13,6 +13,12 @@ blueprint:
     Connect, AirPlay, or Bluetooth sources - on those the chime interrupts
     playback (it cannot be resumed). This is a WiiM firmware limitation.
 
+    Physical inputs (HDMI / optical / line-in): when chiming over a live input
+    - e.g. a WiiM Ultra fed by a TV via HDMI ARC - the device may not switch
+    back to that input after the chime. Enable "Restore source after chime"
+    below to capture the current input before the chime and switch back to it
+    afterward, so live TV audio returns automatically.
+
     Setup tips:
       - Put a chime file (e.g. doorbell.mp3) in your Home Assistant media
         folder (/media) or /config/www, then pick it below.
@@ -80,6 +86,30 @@ blueprint:
       default: "07:00:00"
       selector:
         time: {}
+    restore_source:
+      name: Restore source after chime
+      description: >-
+        After the chime, switch the speaker back to the input it was on (HDMI,
+        optical, line-in, etc.). Useful when chiming over a live TV feed so the
+        TV audio returns. Leave off when chiming over streaming music (the
+        announce feature already handles that).
+      default: false
+      selector:
+        boolean: {}
+    restore_delay:
+      name: Restore delay (seconds)
+      description: >-
+        How long to wait for the chime to finish before switching the input
+        back. Set this a touch longer than your chime sound. Only used when
+        "Restore source after chime" is on.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
 
 # Make inputs available to templates
 variables:
@@ -87,6 +117,8 @@ variables:
   quiet_enabled: !input quiet_hours_enabled
   quiet_start: !input quiet_start
   quiet_end: !input quiet_end
+  restore_source: !input restore_source
+  target_list: !input target_speakers
 
 mode: single
 max_exceeded: silent
@@ -120,6 +152,15 @@ condition:
       {{ not quiet_enabled or not quiet }}
 
 action:
+  # Snapshot each speaker's current input/source before the chime (so we can
+  # switch back to it afterward if "Restore source" is enabled).
+  - variables:
+      saved_sources: >-
+        {% set ns = namespace(items=[]) %}
+        {% for e in target_list %}
+          {% set ns.items = ns.items + [{'entity_id': e, 'source': state_attr(e, 'source')}] %}
+        {% endfor %}
+        {{ ns.items }}
   - action: media_player.play_media
     target:
       entity_id: !input target_speakers
@@ -127,6 +168,25 @@ action:
       media_content_id: "{{ chime.media_content_id }}"
       media_content_type: "{{ chime.media_content_type }}"
       announce: true
+  # Restore the previous input after the chime (for TV / physical-input use).
+  - if:
+      - condition: template
+        value_template: "{{ restore_source }}"
+    then:
+      - delay:
+          seconds: !input restore_delay
+      - repeat:
+          for_each: "{{ saved_sources }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ repeat.item.source not in [none, 'unknown', 'unavailable', ''] }}"
+              then:
+                - action: media_player.select_source
+                  target:
+                    entity_id: "{{ repeat.item.entity_id }}"
+                  data:
+                    source: "{{ repeat.item.source }}"
   # Cooldown: with mode "single", holding this run open suppresses repeat
   # presses for the configured window (skipped when set to 0).
   - delay:
