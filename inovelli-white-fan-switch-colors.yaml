@@ -1,7 +1,23 @@
 blueprint:
-  name: Inovelli Matter Switch Tap Sequences (with Injected LED Colors)
-  description: A complete fork of jay-kub's multi-tap handler, preserving original UI sections and adding custom LED bar color fields directly adjacent to their respective click sequence actions.
+  name: Inovelli Matter Switch Tap Sequences (with Injected LED Colors & Sections)
+  description: A complete fork of jay-kub's multi-tap handler, containing the required top-level section schemas to render the collapsible UI zippies correctly.
   domain: automation
+  
+  # --- This layout block creates the visual UI zippies ---
+  sections:
+    light_sync:
+      name: Light & Dimmer Synchronization Options
+      icon: mdi:sync
+    up_button:
+      name: Up Button Sequences (1x - 5x Taps)
+      icon: mdi:arrow-up-bold-box
+    down_button:
+      name: Down Button Sequences (1x - 5x Taps)
+      icon: mdi:arrow-down-bold-box
+    config_button:
+      name: Config Button Sequences (1x - 5x Taps)
+      icon: mdi:cog
+
   input:
     entity_config:
       name: Config button entity
@@ -25,9 +41,7 @@ blueprint:
         entity:
           domain: select
 
-    # ==========================================
-    #   LIGHT BINDING SECTION (ZIPPIE 1)
-    # ==========================================
+    # --- ZIPPIE 1: LIGHT SYNC ---
     entity_light:
       name: (Optional) Local Switch Light Entity
       description: The local light entity of the physical Inovelli switch used for brightness synchronization.
@@ -61,9 +75,7 @@ blueprint:
           min: 1
           max: 255
 
-    # ==========================================
-    #   UP BUTTON SEQUENCES (ZIPPIE 2)
-    # ==========================================
+    # --- ZIPPIE 2: UP BUTTON ---
     up1:
       name: Up button - 1 tap actions
       default: []
@@ -145,9 +157,7 @@ blueprint:
         select:
           options: *led_colors
 
-    # ==========================================
-    #   DOWN BUTTON SEQUENCES (ZIPPIE 3)
-    # ==========================================
+    # --- ZIPPIE 3: DOWN BUTTON ---
     down1:
       name: Down button - 1 tap actions
       default: []
@@ -218,9 +228,7 @@ blueprint:
         select:
           options: *led_colors
 
-    # ==========================================
-    #   CONFIG BUTTON SEQUENCES (ZIPPIE 4)
-    # ==========================================
+    # --- ZIPPIE 4: CONFIG BUTTON ---
     config1:
       name: Config button - 1 tap actions
       default: []
@@ -295,6 +303,7 @@ variables:
   local_light: !input entity_light
   remote_light: !input target_light
   is_reverse_sync: !input reverse_sync
+  scaled_min: !input min_brightness
 
 trigger:
   - platform: state
@@ -317,7 +326,7 @@ condition: []
 
 action:
   - choose:
-      # --- UP BUTTON CODES ---
+      # --- UP BUTTON ---
       - conditions:
           - condition: trigger
             id: up
@@ -394,7 +403,7 @@ action:
           - choose: []
             default: !input up5
 
-      # --- DOWN BUTTON CODES ---
+      # --- DOWN BUTTON ---
       - conditions:
           - condition: trigger
             id: down
@@ -471,7 +480,7 @@ action:
           - choose: []
             default: !input down5
 
-      # --- CONFIG BUTTON CODES ---
+      # --- CONFIG BUTTON ---
       - conditions:
           - condition: trigger
             id: config
@@ -527,78 +536,4 @@ action:
         sequence:
           - action: select.select_option
             target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_config4
-          - choose: []
-            default: !input config4
-      - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_5
-        sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_config5
-          - choose: []
-            default: !input config5
-
-      # --- NATIVE LIGHT SYNC CORE ---
-      - conditions:
-          - condition: trigger
-            id: local_light_changed
-          - condition: template
-            value_template: "{{ remote_light != [] }}"
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ trigger.to_state.state == 'on' }}"
-                sequence:
-                  - action: light.turn_on
-                    target:
-                      entity_id: !input target_light
-                    data:
-                      brightness: >-
-                        {% set b = state_attr(local_light, 'brightness') %}
-                        {{ b if b is not none else 255 }}
-              - conditions:
-                  - condition: template
-                    value_template: "{{ trigger.to_state.state == 'off' }}"
-                sequence:
-                  - action: light.turn_off
-                    target:
-                      entity_id: !input target_light
-
-      - conditions:
-          - condition: trigger
-            id: remote_light_changed
-          - condition: template
-            value_template: "{{ local_light != [] and is_reverse_sync }}"
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ trigger.to_state.state == 'on' }}"
-                sequence:
-                  - action: light.turn_on
-                    target:
-                      entity_id: !input entity_light
-                    data:
-                      brightness: >-
-                        {% set b = state_attr(remote_light, 'brightness') %}
-                        {{ b if b is not none else 255 }}
-              - conditions:
-                  - condition: template
-                    value_template: "{{ trigger.to_state.state == 'off' }}"
-                sequence:
-                  - action: light.turn_off
-                    target:
-                      entity_id: !input entity_light
-
-mode: restart
+              entity_id: !input led
