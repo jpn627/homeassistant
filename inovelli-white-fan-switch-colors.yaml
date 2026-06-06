@@ -510,6 +510,57 @@ blueprint:
               filter:
               - domain: fan
               multiple: false
+
+    fan_led_inputs:
+      name: Fan Speed → LED Color
+      description: |
+        Make the LED bar continuously reflect the current speed of the
+        **Target Fan** (set under Fan Binding). The color is updated whenever
+        the fan's speed changes — by the Config button, the app, or anything
+        else — so the bar always matches the real fan speed.
+
+        Requires the **LED Bar Color** entity and a **Target Fan** to be set.
+      icon: mdi:fan-alert
+      collapsed: true
+      input:
+        fan_led_enabled:
+          name: Enable Fan Speed → LED Color
+          description: Continuously set the LED bar color to match the Target Fan's speed.
+          default: false
+          selector:
+            boolean: {}
+        fan_color_off:
+          name: Fan Off - LED Color
+          description: LED bar color when the fan is off (0%)
+          default: "White"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        fan_color_low:
+          name: Fan Low - LED Color
+          description: LED bar color for low speed (1-33%)
+          default: "Blue"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        fan_color_medium:
+          name: Fan Medium - LED Color
+          description: LED bar color for medium speed (34-66%)
+          default: "Lemon"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
+        fan_color_high:
+          name: Fan High - LED Color
+          description: LED bar color for high speed (67-100%)
+          default: "Red"
+          selector:
+            select:
+              mode: dropdown
+              options: *led_colors
   source_url: https://github.com/jpn627/homeassistant/blob/main/inovelli-white-fan-switch-colors.yaml
 mode: queued
 max_exceeded: silent
@@ -540,6 +591,11 @@ variables:
   colorConfig5: !input color_config5
   colorConfigHeld: !input color_configHeld
   colorConfigReleased: !input color_configReleased
+  fanLedEnabled: !input fan_led_enabled
+  fanColorOff: !input fan_color_off
+  fanColorLow: !input fan_color_low
+  fanColorMedium: !input fan_color_medium
+  fanColorHigh: !input fan_color_high
 
 trigger:
   - platform: state
@@ -583,6 +639,13 @@ trigger:
     entity_id: !input entity_light
     attribute: brightness
     id: turnOnWithBrightness
+  - platform: state
+    entity_id: !input target_fan
+    id: fanSpeedLed
+  - platform: state
+    entity_id: !input target_fan
+    attribute: percentage
+    id: fanSpeedLed
 
 condition: []
 
@@ -1034,6 +1097,36 @@ action:
             brightness_pct: '{{ targetBrightnessPct }}'
           target:
             entity_id: !input target_light
+  - conditions:
+      - condition: trigger
+        id:
+          - fanSpeedLed
+      - condition: template
+        value_template: >-
+          {{ fanLedEnabled and ledSelect not in [none, []] and targetFan not in [none, []] }}
+    sequence:
+      - variables:
+          fanState: "{{ states(targetFan) }}"
+          fanPct: "{{ state_attr(targetFan, 'percentage') | int(0) }}"
+          fanLedColor: >-
+            {% if fanState in ['off', 'unavailable', 'unknown', 'none'] or fanPct == 0 %}
+              {{ fanColorOff }}
+            {% elif fanPct <= 33 %}
+              {{ fanColorLow }}
+            {% elif fanPct <= 66 %}
+              {{ fanColorMedium }}
+            {% else %}
+              {{ fanColorHigh }}
+            {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ fanLedColor | trim != 'No Change' }}"
+        then:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: "{{ fanLedColor | trim }}"
 - if:
   - condition: template
     value_template: "{{ targetFan != [] }}"
