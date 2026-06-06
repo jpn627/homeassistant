@@ -1,9 +1,9 @@
 blueprint:
-  name: Inovelli Matter Switch Tap Sequences + Custom LED Colors
-  description: Control Inovelli Matter multi-taps and completely customize the LED bar color for every click sequence via the UI.
+  name: Inovelli Matter Switch Tap Sequences + LED Color Selector
+  description: Fully customizable Inovelli Matter multi-tap handler with independent, user-selectable LED bar colors for each sequence.
   domain: automation
   input:
-    # --- Device Entities ---
+    # --- Device & Entity Configuration ---
     entity_config:
       name: Config button entity
       selector:
@@ -19,27 +19,43 @@ blueprint:
       selector:
         entity:
           domain: event
-    target_fan:
-      name: Target Fan
-      selector:
-        entity:
-          domain: fan
     led_select_entity:
       name: LED Color Select Entity
-      description: The select entity controlling the Inovelli switch's LED bar color.
+      description: The select entity that controls the Inovelli switch's LED bar color.
       selector:
         entity:
           domain: select
-    switch_fan_entity:
-      name: Inovelli Fan Switch Entity
-      description: The main wall switch entity turned On/Off.
-      selector:
-        entity:
-          domain: fan
 
-    # --- Custom Color Pickers ---
+    # --- Sequence Actions (From the original layout) ---
+    up1:
+      name: Up button - 1 tap actions
+      default: []
+      selector:
+        action: {}
+    up2:
+      name: Up button - 2 tap actions
+      default: []
+      selector:
+        action: {}
+    up3:
+      name: Up button - 3 tap actions
+      default: []
+      selector:
+        action: {}
+    down1:
+      name: Down button - 1 tap actions
+      default: []
+      selector:
+        action: {}
+    config1:
+      name: Config button - 1 tap actions
+      default: []
+      selector:
+        action: {}
+
+    # --- Matching Custom Color Dropdowns ---
     color_up1:
-      name: 1-Tap Up LED Color
+      name: Up button - 1 tap LED Color
       default: White
       selector:
         select:
@@ -56,32 +72,26 @@ blueprint:
             - "Purple"
             - "Pink"
     color_up2:
-      name: 2-Tap Up LED Color
+      name: Up button - 2 tap LED Color
       default: Cyan
       selector:
         select:
           options: *led_colors
     color_up3:
-      name: 3-Tap Up LED Color
+      name: Up button - 3 tap LED Color
       default: Blue
       selector:
         select:
           options: *led_colors
     color_down1:
-      name: 1-Tap Down LED Color
+      name: Down button - 1 tap LED Color
       default: Red
       selector:
         select:
           options: *led_colors
-    color_switch_on:
-      name: External Power On LED Color
+    color_config1:
+      name: Config button - 1 tap LED Color
       default: White
-      selector:
-        select:
-          options: *led_colors
-    color_switch_off:
-      name: External Power Off LED Color
-      default: Red
       selector:
         select:
           options: *led_colors
@@ -96,20 +106,12 @@ trigger:
   - platform: state
     entity_id: !input entity_down
     id: down
-  - platform: state
-    entity_id: !input switch_fan_entity
-    to: "off"
-    id: ext_switch_off
-  - platform: state
-    entity_id: !input switch_fan_entity
-    to: "on"
-    id: ext_switch_on
 
 condition: []
 
 action:
   - choose:
-      # 1 Single Tap UP -> 30% Speed + Custom LED Color
+      # --- 1 Tap UP ---
       - conditions:
           - condition: trigger
             id: up
@@ -118,18 +120,15 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 30
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
               option: !input color_up1
+          - choose: []
+            default: !input up1
 
-      # 2 Double Tap UP -> 60% Speed + Custom LED Color
+      # --- 2 Taps UP ---
       - conditions:
           - condition: trigger
             id: up
@@ -138,18 +137,15 @@ action:
             attribute: event_type
             state: multi_press_2
         sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 60
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
               option: !input color_up2
+          - choose: []
+            default: !input up2
 
-      # 3 Triple Tap UP -> 90% Speed + Custom LED Color
+      # --- 3 Taps UP ---
       - conditions:
           - condition: trigger
             id: up
@@ -158,18 +154,15 @@ action:
             attribute: event_type
             state: multi_press_3
         sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 90
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
               option: !input color_up3
+          - choose: []
+            default: !input up3
 
-      # 4 Single Tap DOWN -> Fan OFF + Custom LED Color
+      # --- 1 Tap DOWN ---
       - conditions:
           - condition: trigger
             id: down
@@ -178,16 +171,15 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: fan.turn_off
-            target:
-              entity_id: !input target_fan
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
               option: !input color_down1
+          - choose: []
+            default: !input down1
 
-      # 5 Config Button Press -> Light Toggle
+      # --- 1 Tap CONFIG ---
       - conditions:
           - condition: trigger
             id: config
@@ -196,254 +188,12 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: light.toggle
-            target:
-              entity_id: !input target_fan
-
-      # 6 External Wall Switch Off Event -> Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: ext_switch_off
-        sequence:
           - action: select.select_option
             target:
               entity_id: !input led_select_entity
             data:
-              option: !input color_switch_off
-
-      # 7 External Wall Switch On Event -> Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: ext_switch_on
-        sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_switch_on
-
-mode: singleblueprint:
-  name: Inovelli Matter Switch Tap Sequences + Custom LED Colors
-  description: Control Inovelli Matter multi-taps and completely customize the LED bar color for every click sequence via the UI.
-  domain: automation
-  input:
-    # --- Device Entities ---
-    entity_config:
-      name: Config button entity
-      selector:
-        entity:
-          domain: event
-    entity_up:
-      name: Up button entity
-      selector:
-        entity:
-          domain: event
-    entity_down:
-      name: Down button entity
-      selector:
-        entity:
-          domain: event
-    target_fan:
-      name: Target Fan
-      selector:
-        entity:
-          domain: fan
-    led_select_entity:
-      name: LED Color Select Entity
-      description: The select entity controlling the Inovelli switch's LED bar color.
-      selector:
-        entity:
-          domain: select
-    switch_fan_entity:
-      name: Inovelli Fan Switch Entity
-      description: The main wall switch entity turned On/Off.
-      selector:
-        entity:
-          domain: fan
-
-    # --- Custom Color Pickers ---
-    color_up1:
-      name: 1-Tap Up LED Color
-      default: White
-      selector:
-        select:
-          options: &led_colors
-            - "White"
-            - "Red"
-            - "Green"
-            - "Blue"
-            - "Cyan"
-            - "Magenta"
-            - "Yellow"
-            - "Orange"
-            - "Aqua"
-            - "Purple"
-            - "Pink"
-    color_up2:
-      name: 2-Tap Up LED Color
-      default: Cyan
-      selector:
-        select:
-          options: *led_colors
-    color_up3:
-      name: 3-Tap Up LED Color
-      default: Blue
-      selector:
-        select:
-          options: *led_colors
-    color_down1:
-      name: 1-Tap Down LED Color
-      default: Red
-      selector:
-        select:
-          options: *led_colors
-    color_switch_on:
-      name: External Power On LED Color
-      default: White
-      selector:
-        select:
-          options: *led_colors
-    color_switch_off:
-      name: External Power Off LED Color
-      default: Red
-      selector:
-        select:
-          options: *led_colors
-
-trigger:
-  - platform: state
-    entity_id: !input entity_config
-    id: config
-  - platform: state
-    entity_id: !input entity_up
-    id: up
-  - platform: state
-    entity_id: !input entity_down
-    id: down
-  - platform: state
-    entity_id: !input switch_fan_entity
-    to: "off"
-    id: ext_switch_off
-  - platform: state
-    entity_id: !input switch_fan_entity
-    to: "on"
-    id: ext_switch_on
-
-condition: []
-
-action:
-  - choose:
-      # 1 Single Tap UP -> 30% Speed + Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_1
-        sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 30
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up1
-
-      # 2 Double Tap UP -> 60% Speed + Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_2
-        sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 60
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up2
-
-      # 3 Triple Tap UP -> 90% Speed + Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: up
-          - condition: state
-            entity_id: !input entity_up
-            attribute: event_type
-            state: multi_press_3
-        sequence:
-          - action: fan.set_percentage
-            target:
-              entity_id: !input target_fan
-            data:
-              percentage: 90
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up3
-
-      # 4 Single Tap DOWN -> Fan OFF + Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: down
-          - condition: state
-            entity_id: !input entity_down
-            attribute: event_type
-            state: multi_press_1
-        sequence:
-          - action: fan.turn_off
-            target:
-              entity_id: !input target_fan
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_down1
-
-      # 5 Config Button Press -> Light Toggle
-      - conditions:
-          - condition: trigger
-            id: config
-          - condition: state
-            entity_id: !input entity_config
-            attribute: event_type
-            state: multi_press_1
-        sequence:
-          - action: light.toggle
-            target:
-              entity_id: !input target_fan
-
-      # 6 External Wall Switch Off Event -> Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: ext_switch_off
-        sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_switch_off
-
-      # 7 External Wall Switch On Event -> Custom LED Color
-      - conditions:
-          - condition: trigger
-            id: ext_switch_on
-        sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_switch_on
+              option: !input color_config1
+          - choose: []
+            default: !input config1
 
 mode: single
