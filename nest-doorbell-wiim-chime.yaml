@@ -24,6 +24,10 @@ blueprint:
     integration). The automation waits for the chime to finish, then restores
     the input and - if you enable it - resumes playback.
 
+    Chime customization: optionally set the chime volume (restored afterward),
+    and use a different sound and/or volume during an evening window - e.g. a
+    softer chime at a lower volume in the evening.
+
     Setup tips:
       - Put a chime file (e.g. doorbell.mp3) in your Home Assistant media
         folder (/media) or /config/www, then pick it below.
@@ -60,6 +64,67 @@ blueprint:
         /config/www. Most common audio formats (mp3, wav) work.
       selector:
         media: {}
+    control_volume:
+      name: Set chime volume
+      description: >-
+        Set the speakers to a fixed volume for the chime, then restore their
+        previous volume afterward - so the doorbell stays audible even if you
+        were listening quietly. (With WiiM "announce" the device may apply its
+        own volume handling; this is most predictable on the TV / physical-input
+        path.)
+      default: false
+      selector:
+        boolean: {}
+    chime_volume:
+      name: Daytime chime volume
+      description: Volume for the chime, used when "Set chime volume" is on.
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    evening_enabled:
+      name: Use a different chime in the evening
+      description: >-
+        During an evening window, play a different sound and/or volume. This is
+        separate from Quiet Hours (which silences the chime entirely).
+      default: false
+      selector:
+        boolean: {}
+    evening_chime_sound:
+      name: Evening Chime Sound
+      description: >-
+        Sound to play during the evening window. Leave empty to keep the daytime
+        sound but still apply the evening volume below.
+      default: {}
+      selector:
+        media: {}
+    evening_volume:
+      name: Evening chime volume
+      description: Volume during the evening window, used when "Set chime volume" is on.
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    evening_start:
+      name: Evening Start
+      description: When the evening chime window begins.
+      default: "20:00:00"
+      selector:
+        time: {}
+    evening_end:
+      name: Evening End
+      description: When the evening chime window ends (can span midnight).
+      default: "07:00:00"
+      selector:
+        time: {}
     cooldown:
       name: Cooldown (seconds)
       description: >-
@@ -152,6 +217,13 @@ variables:
   pause_target: !input pause_target
   pause_resume: !input pause_resume
   primary_speaker: "{{ (target_list | first) if target_list else none }}"
+  control_volume: !input control_volume
+  chime_volume: !input chime_volume
+  evening_enabled: !input evening_enabled
+  evening_chime: !input evening_chime_sound
+  evening_volume: !input evening_volume
+  evening_start: !input evening_start
+  evening_end: !input evening_end
 
 mode: single
 max_exceeded: silent
@@ -185,18 +257,35 @@ condition:
       {{ not quiet_enabled or not quiet }}
 
 action:
-  # Snapshot speaker inputs (for restore) and decide whether to pause the TV.
+  # Snapshot speaker inputs + volumes (for restore), decide whether to pause the
+  # TV, and pick the chime/volume for the current time of day.
   - variables:
-      saved_sources: >-
+      saved_state: >-
         {% set ns = namespace(items=[]) %}
         {% for e in target_list %}
-          {% set ns.items = ns.items + [{'entity_id': e, 'source': state_attr(e, 'source')}] %}
+          {% set ns.items = ns.items + [{
+            'entity_id': e,
+            'source': state_attr(e, 'source'),
+            'volume': state_attr(e, 'volume_level') }] %}
         {% endfor %}
         {{ ns.items }}
       did_pause: >-
         {{ pause_target not in [none, []]
            and states(pause_target) not in
                ['off', 'unavailable', 'unknown', 'standby', 'idle', 'paused'] }}
+      is_evening: >-
+        {% set cur = now().hour * 60 + now().minute %}
+        {% set sp = evening_start.split(':') %}
+        {% set ep = evening_end.split(':') %}
+        {% set s = sp[0] | int * 60 + sp[1] | int %}
+        {% set e = ep[0] | int * 60 + ep[1] | int %}
+        {{ evening_enabled and s != e and
+           ((s < e and s <= cur < e) or (s > e and (cur >= s or cur < e))) }}
+      use_evening_chime: >-
+        {{ is_evening and evening_chime.media_content_id is defined
+           and evening_chime.media_content_id }}
+      active_chime: "{{ evening_chime if use_evening_chime else chime }}"
+      active_volume: "{{ evening_volume if is_evening else chime_volume }}"
   # Pause the TV / streamer first, if it's on and one was selected.
   - if:
       - condition: template
@@ -205,13 +294,24 @@ action:
       - action: media_player.media_pause
         target:
           entity_id: !input pause_target
-  # Play the chime (announce ducks/overlays current audio).
+  # Set the chime volume (restored after the chime).
+  - if:
+      - condition: template
+        value_template: "{{ control_volume }}"
+    then:
+      - action: media_player.volume_set
+        target:
+          entity_id: !input target_speakers
+        data:
+          volume_level: "{{ active_volume | float / 100 }}"
+  # Play the chime (announce ducks/overlays current audio). The sound follows
+  # the time of day (evening sound during the evening window, else daytime).
   - action: media_player.play_media
     target:
       entity_id: !input target_speakers
     data:
-      media_content_id: "{{ chime.media_content_id }}"
-      media_content_type: "{{ chime.media_content_type }}"
+      media_content_id: "{{ active_chime.media_content_id }}"
+      media_content_type: "{{ active_chime.media_content_type }}"
       announce: true
   # Wait for the chime to actually finish before restoring input / resuming.
   # Watches the primary speaker's state; falls back to a fixed wait if the
@@ -237,13 +337,30 @@ action:
           # Device didn't report playback -> fall back to the configured wait.
           - delay:
               seconds: !input chime_wait
+  # Restore the previous volume after the chime.
+  - if:
+      - condition: template
+        value_template: "{{ control_volume }}"
+    then:
+      - repeat:
+          for_each: "{{ saved_state }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ repeat.item.volume is number }}"
+              then:
+                - action: media_player.volume_set
+                  target:
+                    entity_id: "{{ repeat.item.entity_id }}"
+                  data:
+                    volume_level: "{{ repeat.item.volume }}"
   # Restore the previous input after the chime (for TV / physical-input use).
   - if:
       - condition: template
         value_template: "{{ restore_source }}"
     then:
       - repeat:
-          for_each: "{{ saved_sources }}"
+          for_each: "{{ saved_state }}"
           sequence:
             - if:
                 - condition: template
