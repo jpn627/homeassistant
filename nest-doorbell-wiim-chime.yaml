@@ -19,6 +19,11 @@ blueprint:
     below to capture the current input before the chime and switch back to it
     afterward, so live TV audio returns automatically.
 
+    Optional TV pause: you can have a separate media player paused while the
+    chime plays (e.g. a Google TV Streamer added via the Android TV Remote
+    integration). The automation waits for the chime to finish, then restores
+    the input and - if you enable it - resumes playback.
+
     Setup tips:
       - Put a chime file (e.g. doorbell.mp3) in your Home Assistant media
         folder (/media) or /config/www, then pick it below.
@@ -96,13 +101,15 @@ blueprint:
       default: false
       selector:
         boolean: {}
-    restore_delay:
-      name: Restore delay (seconds)
+    chime_wait:
+      name: Max wait for chime to finish (seconds)
       description: >-
-        How long to wait for the chime to finish before switching the input
-        back. Set this a touch longer than your chime sound. Only used when
-        "Restore source after chime" is on.
-      default: 5
+        Before restoring the input or resuming playback, the automation waits
+        for the chime to finish. It watches the speaker's playback state and
+        stops waiting as soon as the chime ends; this is the maximum it will
+        wait (and the fallback wait if the speaker doesn't report state). Set a
+        little longer than your longest chime.
+      default: 10
       selector:
         number:
           min: 1
@@ -110,6 +117,29 @@ blueprint:
           step: 1
           unit_of_measurement: seconds
           mode: box
+    pause_target:
+      name: (Optional) Pause this player during the chime
+      description: >-
+        A media player to pause while the chime plays - e.g. your Google TV
+        Streamer (added via the Android TV Remote integration). Note: pausing
+        the Vizio TV itself will NOT pause content playing from an external HDMI
+        device, so target the streamer that is actually playing. Leave empty to
+        disable.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: media_player
+          multiple: false
+    pause_resume:
+      name: Resume playback after chime
+      description: >-
+        After the chime, press play to resume what was paused. Off (default)
+        leaves it paused - handy since a doorbell usually means you are getting
+        up to answer, so you will not miss anything.
+      default: false
+      selector:
+        boolean: {}
 
 # Make inputs available to templates
 variables:
@@ -119,6 +149,9 @@ variables:
   quiet_end: !input quiet_end
   restore_source: !input restore_source
   target_list: !input target_speakers
+  pause_target: !input pause_target
+  pause_resume: !input pause_resume
+  primary_speaker: "{{ (target_list | first) if target_list else none }}"
 
 mode: single
 max_exceeded: silent
@@ -152,8 +185,7 @@ condition:
       {{ not quiet_enabled or not quiet }}
 
 action:
-  # Snapshot each speaker's current input/source before the chime (so we can
-  # switch back to it afterward if "Restore source" is enabled).
+  # Snapshot speaker inputs (for restore) and decide whether to pause the TV.
   - variables:
       saved_sources: >-
         {% set ns = namespace(items=[]) %}
@@ -161,6 +193,19 @@ action:
           {% set ns.items = ns.items + [{'entity_id': e, 'source': state_attr(e, 'source')}] %}
         {% endfor %}
         {{ ns.items }}
+      did_pause: >-
+        {{ pause_target not in [none, []]
+           and states(pause_target) not in
+               ['off', 'unavailable', 'unknown', 'standby', 'idle', 'paused'] }}
+  # Pause the TV / streamer first, if it's on and one was selected.
+  - if:
+      - condition: template
+        value_template: "{{ did_pause }}"
+    then:
+      - action: media_player.media_pause
+        target:
+          entity_id: !input pause_target
+  # Play the chime (announce ducks/overlays current audio).
   - action: media_player.play_media
     target:
       entity_id: !input target_speakers
@@ -168,13 +213,35 @@ action:
       media_content_id: "{{ chime.media_content_id }}"
       media_content_type: "{{ chime.media_content_type }}"
       announce: true
+  # Wait for the chime to actually finish before restoring input / resuming.
+  # Watches the primary speaker's state; falls back to a fixed wait if the
+  # device never reports a "playing" state for the announcement.
+  - if:
+      - condition: template
+        value_template: "{{ restore_source or (did_pause and pause_resume) }}"
+    then:
+      - wait_template: "{{ is_state(primary_speaker, 'playing') }}"
+        timeout:
+          seconds: 3
+        continue_on_timeout: true
+      - if:
+          - condition: template
+            value_template: "{{ wait.completed }}"
+        then:
+          # Chime started -> wait until it stops (capped at the max).
+          - wait_template: "{{ not is_state(primary_speaker, 'playing') }}"
+            timeout:
+              seconds: !input chime_wait
+            continue_on_timeout: true
+        else:
+          # Device didn't report playback -> fall back to the configured wait.
+          - delay:
+              seconds: !input chime_wait
   # Restore the previous input after the chime (for TV / physical-input use).
   - if:
       - condition: template
         value_template: "{{ restore_source }}"
     then:
-      - delay:
-          seconds: !input restore_delay
       - repeat:
           for_each: "{{ saved_sources }}"
           sequence:
@@ -187,6 +254,14 @@ action:
                     entity_id: "{{ repeat.item.entity_id }}"
                   data:
                     source: "{{ repeat.item.source }}"
+  # Resume the paused TV / streamer (only if we paused it and resume is on).
+  - if:
+      - condition: template
+        value_template: "{{ did_pause and pause_resume }}"
+    then:
+      - action: media_player.media_play
+        target:
+          entity_id: !input pause_target
   # Cooldown: with mode "single", holding this run open suppresses repeat
   # presses for the configured window (skipped when set to 0).
   - delay:
