@@ -1,7 +1,20 @@
 blueprint:
   name: Lutron Pico Remote to Fan & Light Controller
-  description: Control a fan and its integrated light using a 5-button Lutron Pico Remote.
+  description: >-
+    Control a fan and its integrated light using a 5-button Lutron Pico Remote.
+
+    - On: turn the fan on, restoring the last known speed
+    - Off: turn the fan off
+    - Center (stop): toggle the fan light
+    - Raise / Lower: increase / decrease fan speed
+
+    For a true "restore last speed" you can optionally provide an input_number
+    helper; the blueprint stores the fan's speed there whenever it changes and
+    reads it back when you press On. Without a helper it falls back to the fan's
+    current speed, then to the configured default speed.
   domain: automation
+  homeassistant:
+    min_version: 2024.8.0
   input:
     pico_remote:
       name: Lutron Pico Remote
@@ -21,10 +34,36 @@ blueprint:
       selector:
         entity:
           domain: light
+    last_speed_helper:
+      name: (Optional) Last Speed Helper
+      description: >-
+        An input_number helper used to remember the fan's last speed across
+        off/on cycles. Create one under Settings > Devices & Services > Helpers
+        (Number, min 0, max 100). Leave empty to fall back to the fan's current
+        speed / the default speed below.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: input_number
+          multiple: false
+    default_speed:
+      name: Default / Fallback Speed
+      description: Speed used when turning the fan on if no previous speed is known.
+      default: 33
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
 
-# Expose the input globally to the Jinja template engine
+# Expose inputs to the Jinja template engine
 variables:
   fan_entity: !input fan_target
+  last_speed_helper: !input last_speed_helper
+  default_speed: !input default_speed
 
 trigger:
   - platform: device
@@ -57,23 +96,29 @@ trigger:
     type: press
     subtype: lower
     id: button_lower
+  # Remember the fan's speed whenever it changes (only used if a helper is set)
+  - platform: state
+    entity_id: !input fan_target
+    attribute: percentage
+    id: fan_speed_changed
 
 condition: []
 
 action:
   - choose:
-      # ON Button -> Restore last speed via variable, fallback to 33% if unknown/0
+      # ON Button -> Turn fan on, restoring last speed (helper > current > default)
       - conditions:
           - condition: trigger
             id: pico_on
         sequence:
-          - action: fan.set_percentage
+          - action: fan.turn_on
             target:
               entity_id: !input fan_target
             data:
               percentage: >-
-                {% set last_speed = state_attr(fan_entity, 'percentage') %}
-                {{ last_speed if last_speed and last_speed | int > 0 else 33 }}
+                {% set helper = states(last_speed_helper) | int(0) if last_speed_helper not in [none, []] else 0 %}
+                {% set current = state_attr(fan_entity, 'percentage') | int(0) %}
+                {{ helper if helper > 0 else (current if current > 0 else default_speed) }}
 
       # OFF Button -> Turn Fan Off
       - conditions:
@@ -111,11 +156,22 @@ action:
             target:
               entity_id: !input fan_target
 
-  # Debounce mechanism: Holds the automation lock for 250ms to ignore bounced signals
-  - delay:
-      hours: 0
-      minutes: 0
-      seconds: 0
-      milliseconds: 250
+      # Fan speed changed -> Persist it to the helper (only when set and > 0)
+      - conditions:
+          - condition: trigger
+            id: fan_speed_changed
+          - condition: template
+            value_template: "{{ last_speed_helper not in [none, []] }}"
+          - condition: template
+            value_template: "{{ state_attr(fan_entity, 'percentage') | int(0) > 0 }}"
+        sequence:
+          - action: input_number.set_value
+            target:
+              entity_id: !input last_speed_helper
+            data:
+              value: "{{ state_attr(fan_entity, 'percentage') | int(0) }}"
 
-mode: single
+# Queued so rapid Raise/Lower presses are processed in order instead of dropped
+mode: queued
+max: 10
+max_exceeded: silent
