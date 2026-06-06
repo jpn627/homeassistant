@@ -22,6 +22,10 @@ blueprint:
         entity:
           domain: light
 
+# Expose the input globally to the Jinja template engine
+variables:
+  fan_entity: !input fan_target
+
 trigger:
   - platform: device
     device_id: !input pico_remote
@@ -58,7 +62,7 @@ condition: []
 
 action:
   - choose:
-      # ON Button -> Restore last speed, fallback to 33% if unknown or 0
+      # ON Button -> Restore last speed via variable, fallback to 33% if unknown/0
       - conditions:
           - condition: trigger
             id: pico_on
@@ -68,7 +72,7 @@ action:
               entity_id: !input fan_target
             data:
               percentage: >-
-                {% set last_speed = state_attr(fan_target, 'percentage') %}
+                {% set last_speed = state_attr(fan_entity, 'percentage') %}
                 {{ last_speed if last_speed and last_speed | int > 0 else 33 }}
 
       # OFF Button -> Turn Fan Off
