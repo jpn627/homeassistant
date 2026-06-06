@@ -1,9 +1,9 @@
 blueprint:
-  name: Inovelli Matter Switch Tap Sequences + LED Color Selector
-  description: Fully customizable Inovelli Matter multi-tap handler with independent, user-selectable LED bar colors for each sequence.
+  name: Inovelli Matter Switch Tap Sequences with Custom LED Color Sync
+  description: Full-featured multi-tap sequence handler for Inovelli White Series Matter switches, including native light/dimmer binding and fully customizable LED bar colors for each sequence.
   domain: automation
   input:
-    # --- Device & Entity Configuration ---
+    # --- Hardware Event Entities ---
     entity_config:
       name: Config button entity
       selector:
@@ -21,12 +21,43 @@ blueprint:
           domain: event
     led_select_entity:
       name: LED Color Select Entity
-      description: The select entity that controls the Inovelli switch's LED bar color.
+      description: (Optional) The select entity controlling the Inovelli switch's LED bar color.
+      default: []
       selector:
         entity:
           domain: select
 
-    # --- Sequence Actions (From the original layout) ---
+    # --- Optional Light Binding Features ---
+    entity_light:
+      name: Local Switch Light Entity
+      description: (Optional) The local light entity of the physical Inovelli switch used for brightness synchronization.
+      default: []
+      selector:
+        entity:
+          domain: light
+    target_light:
+      name: Target Light Entity
+      description: (Optional) The master smart light or canopy light entity to sync brightness and states with.
+      default: []
+      selector:
+        entity:
+          domain: light
+    reverse_sync:
+      name: Enable Reverse Synchronization
+      description: Synchronize state changes from the target light back to the local switch.
+      default: false
+      selector:
+        boolean: {}
+    min_brightness:
+      name: Minimum Brightness
+      description: The minimum scaling brightness value for your light fixtures.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 255
+
+    # --- Up Button Custom Actions ---
     up1:
       name: Up button - 1 tap actions
       default: []
@@ -42,18 +73,72 @@ blueprint:
       default: []
       selector:
         action: {}
+    up4:
+      name: Up button - 4 tap actions
+      default: []
+      selector:
+        action: {}
+    up5:
+      name: Up button - 5 tap actions
+      default: []
+      selector:
+        action: {}
+
+    # --- Down Button Custom Actions ---
     down1:
       name: Down button - 1 tap actions
       default: []
       selector:
         action: {}
+    down2:
+      name: Down button - 2 tap actions
+      default: []
+      selector:
+        action: {}
+    down3:
+      name: Down button - 3 tap actions
+      default: []
+      selector:
+        action: {}
+    down4:
+      name: Down button - 4 tap actions
+      default: []
+      selector:
+        action: {}
+    down5:
+      name: Down button - 5 tap actions
+      default: []
+      selector:
+        action: {}
+
+    # --- Config Button Custom Actions ---
     config1:
       name: Config button - 1 tap actions
       default: []
       selector:
         action: {}
+    config2:
+      name: Config button - 2 tap actions
+      default: []
+      selector:
+        action: {}
+    config3:
+      name: Config button - 3 tap actions
+      default: []
+      selector:
+        action: {}
+    config4:
+      name: Config button - 4 tap actions
+      default: []
+      selector:
+        action: {}
+    config5:
+      name: Config button - 5 tap actions
+      default: []
+      selector:
+        action: {}
 
-    # --- Matching Custom Color Dropdowns ---
+    # --- Inline Color Selectors ---
     color_up1:
       name: Up button - 1 tap LED Color
       default: White
@@ -83,8 +168,44 @@ blueprint:
       selector:
         select:
           options: *led_colors
+    color_up4:
+      name: Up button - 4 tap LED Color
+      default: Purple
+      selector:
+        select:
+          options: *led_colors
+    color_up5:
+      name: Up button - 5 tap LED Color
+      default: Pink
+      selector:
+        select:
+          options: *led_colors
     color_down1:
       name: Down button - 1 tap LED Color
+      default: Red
+      selector:
+        select:
+          options: *led_colors
+    color_down2:
+      name: Down button - 2 tap LED Color
+      default: Orange
+      selector:
+        select:
+          options: *led_colors
+    color_down3:
+      name: Down button - 3 tap LED Color
+      default: Yellow
+      selector:
+        select:
+          options: *led_colors
+    color_down4:
+      name: Down button - 4 tap LED Color
+      default: Magenta
+      selector:
+        select:
+          options: *led_colors
+    color_down5:
+      name: Down button - 5 tap LED Color
       default: Red
       selector:
         select:
@@ -95,6 +216,37 @@ blueprint:
       selector:
         select:
           options: *led_colors
+    color_config2:
+      name: Config button - 2 tap LED Color
+      default: White
+      selector:
+        select:
+          options: *led_colors
+    color_config3:
+      name: Config button - 3 tap LED Color
+      default: White
+      selector:
+        select:
+          options: *led_colors
+    color_config4:
+      name: Config button - 4 tap LED Color
+      default: White
+      selector:
+        select:
+          options: *led_colors
+    color_config5:
+      name: Config button - 5 tap LED Color
+      default: White
+      selector:
+        select:
+          options: *led_colors
+
+variables:
+  led_entity: !input led_select_entity
+  local_light: !input entity_light
+  remote_light: !input target_light
+  is_reverse_sync: !input reverse_sync
+  scaled_min: !input min_brightness
 
 trigger:
   - platform: state
@@ -106,12 +258,20 @@ trigger:
   - platform: state
     entity_id: !input entity_down
     id: down
+  - platform: state
+    entity_id: !input entity_light
+    id: local_light_changed
+  - platform: state
+    entity_id: !input target_light
+    id: remote_light_changed
 
 condition: []
 
 action:
   - choose:
-      # --- 1 Tap UP ---
+      # ==========================================
+      #   UP BUTTON PAYLOADS
+      # ==========================================
       - conditions:
           - condition: trigger
             id: up
@@ -120,15 +280,18 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up1
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_up1
           - choose: []
             default: !input up1
 
-      # --- 2 Taps UP ---
       - conditions:
           - condition: trigger
             id: up
@@ -137,15 +300,18 @@ action:
             attribute: event_type
             state: multi_press_2
         sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up2
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_up2
           - choose: []
             default: !input up2
 
-      # --- 3 Taps UP ---
       - conditions:
           - condition: trigger
             id: up
@@ -154,15 +320,61 @@ action:
             attribute: event_type
             state: multi_press_3
         sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_up3
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_up3
           - choose: []
             default: !input up3
 
-      # --- 1 Tap DOWN ---
+      - conditions:
+          - condition: trigger
+            id: up
+          - condition: state
+            entity_id: !input entity_up
+            attribute: event_type
+            state: multi_press_4
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_up4
+          - choose: []
+            default: !input up4
+
+      - conditions:
+          - condition: trigger
+            id: up
+          - condition: state
+            entity_id: !input entity_up
+            attribute: event_type
+            state: multi_press_5
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_up5
+          - choose: []
+            default: !input up5
+
+      # ==========================================
+      #   DOWN BUTTON PAYLOADS
+      # ==========================================
       - conditions:
           - condition: trigger
             id: down
@@ -171,15 +383,101 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_down1
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_down1
           - choose: []
             default: !input down1
 
-      # --- 1 Tap CONFIG ---
+      - conditions:
+          - condition: trigger
+            id: down
+          - condition: state
+            entity_id: !input entity_down
+            attribute: event_type
+            state: multi_press_2
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_down2
+          - choose: []
+            default: !input down2
+
+      - conditions:
+          - condition: trigger
+            id: down
+          - condition: state
+            entity_id: !input entity_down
+            attribute: event_type
+            state: multi_press_3
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_down3
+          - choose: []
+            default: !input down3
+
+      - conditions:
+          - condition: trigger
+            id: down
+          - condition: state
+            entity_id: !input entity_down
+            attribute: event_type
+            state: multi_press_4
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_down4
+          - choose: []
+            default: !input down4
+
+      - conditions:
+          - condition: trigger
+            id: down
+          - condition: state
+            entity_id: !input entity_down
+            attribute: event_type
+            state: multi_press_5
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_down5
+          - choose: []
+            default: !input down5
+
+      # ==========================================
+      #   CONFIG BUTTON PAYLOADS
+      # ==========================================
       - conditions:
           - condition: trigger
             id: config
@@ -188,12 +486,151 @@ action:
             attribute: event_type
             state: multi_press_1
         sequence:
-          - action: select.select_option
-            target:
-              entity_id: !input led_select_entity
-            data:
-              option: !input color_config1
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_config1
           - choose: []
             default: !input config1
 
-mode: single
+      - conditions:
+          - condition: trigger
+            id: config
+          - condition: state
+            entity_id: !input entity_config
+            attribute: event_type
+            state: multi_press_2
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_config2
+          - choose: []
+            default: !input config2
+
+      - conditions:
+          - condition: trigger
+            id: config
+          - condition: state
+            entity_id: !input entity_config
+            attribute: event_type
+            state: multi_press_3
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_config3
+          - choose: []
+            default: !input config3
+
+      - conditions:
+          - condition: trigger
+            id: config
+          - condition: state
+            entity_id: !input entity_config
+            attribute: event_type
+            state: multi_press_4
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_config4
+          - choose: []
+            default: !input config4
+
+      - conditions:
+          - condition: trigger
+            id: config
+          - condition: state
+            entity_id: !input entity_config
+            attribute: event_type
+            state: multi_press_5
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ led_entity != [] }}"
+            then:
+              - action: select.select_option
+                target:
+                  entity_id: !input led_select_entity
+                data:
+                  option: !input color_config5
+          - choose: []
+            default: !input config5
+
+      # ==========================================
+      #   NATIVE LIGHT & DIMMING SYNC LOGIC
+      # ==========================================
+      - conditions:
+          - condition: trigger
+            id: local_light_changed
+          - condition: template
+            value_template: "{{ remote_light != [] }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ trigger.to_state.state == 'on' }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: !input target_light
+                    data:
+                      brightness: >-
+                        {% set b = state_attr(local_light, 'brightness') %}
+                        {{ b if b is not none else 255 }}
+              - conditions:
+                  - condition: template
+                    value_template: "{{ trigger.to_state.state == 'off' }}"
+                sequence:
+                  - action: light.turn_off
+                    target:
+                      entity_id: !input target_light
+
+      - conditions:
+          - condition: trigger
+            id: remote_light_changed
+          - condition: template
+            value_template: "{{ local_light != [] and is_reverse_sync }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ trigger.to_state.state == 'on' }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: !input entity_light
+                    data:
+                      brightness: >-
+                        {% set b = state_attr(remote_light, 'brightness') %}
+                        {{ b if b is not none else 255 }}
+              - conditions:
+                  - condition: template
+                    value_template: "{{ trigger.to_state.state == 'off' }}"
+                sequence:
+                  - action: light.turn_off
+                    target:
+                      entity_id: !input entity_light
+
+mode: restart
