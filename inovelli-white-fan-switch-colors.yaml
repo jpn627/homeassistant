@@ -1,0 +1,142 @@
+blueprint:
+  name: Inovelli Switch LED Speed & State Sync
+  description: Automatically updates an Inovelli switch LED bar color based on the fan's power state and preset speeds (Low, Medium, High).
+  domain: automation
+  input:
+    led_select_entity:
+      name: LED Color Select Entity
+      description: The select entity that controls the Inovelli switch's LED bar color.
+      selector:
+        entity:
+          domain: select
+    switch_fan_entity:
+      name: Inovelli Fan Switch Entity
+      description: The main fan switch entity on the wall that is turned On/Off.
+      selector:
+        entity:
+          domain: fan
+    canopy_fan_entity:
+      name: Canopy Fan Entity
+      description: The canopy module fan entity used to read speed states and preset modes.
+      selector:
+        entity:
+          domain: fan
+
+trigger:
+  # 1. Wall Switch turned OFF
+  - platform: state
+    entity_id: !input switch_fan_entity
+    to: "off"
+    id: switch_off
+  # 2. Wall Switch turned ON
+  - platform: state
+    entity_id: !input switch_fan_entity
+    to: "on"
+    id: switch_on
+  # 3. Canopy speed changes to Low
+  - platform: state
+    entity_id: !input canopy_fan_entity
+    attribute: preset_mode
+    to: "low"
+    id: speed_low
+  # 4. Canopy speed changes to Medium
+  - platform: state
+    entity_id: !input canopy_fan_entity
+    attribute: preset_mode
+    to: "medium"
+    id: speed_medium
+  # 5. Canopy speed changes to High
+  - platform: state
+    entity_id: !input canopy_fan_entity
+    attribute: preset_mode
+    to: "high"
+    id: speed_high
+  # 6. Canopy Fan itself is turned OFF
+  - platform: state
+    entity_id: !input canopy_fan_entity
+    to: "off"
+    id: speed_off
+
+condition: []
+
+action:
+  - choose:
+      # Switch Off -> LED Red (No "Is On" condition required here)
+      - conditions:
+          - condition: trigger
+            id: switch_off
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: Red
+
+      # Switch On -> LED White
+      - conditions:
+          - condition: trigger
+            id: switch_on
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: White
+
+      # Low Speed -> LED Cyan (Requires Wall Switch to be ON)
+      - conditions:
+          - condition: trigger
+            id: speed_low
+          - condition: state
+            entity_id: !input switch_fan_entity
+            state: "on"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: Cyan
+
+      # Medium Speed -> LED Aqua (Requires Wall Switch to be ON)
+      - conditions:
+          - condition: trigger
+            id: speed_medium
+          - condition: state
+            entity_id: !input switch_fan_entity
+            state: "on"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: Aqua
+
+      # High Speed -> LED Blue (Requires Wall Switch to be ON)
+      - conditions:
+          - condition: trigger
+            id: speed_high
+          - condition: state
+            entity_id: !input switch_fan_entity
+            state: "on"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: Blue
+
+      # Fan Speed Off -> LED White (Requires Wall Switch to be ON)
+      - conditions:
+          - condition: trigger
+            id: speed_off
+          - condition: state
+            entity_id: !input switch_fan_entity
+            state: "on"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input led_select_entity
+            data:
+              option: White
+
+mode: single
