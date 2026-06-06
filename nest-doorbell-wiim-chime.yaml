@@ -1,0 +1,95 @@
+blueprint:
+  name: Nest Doorbell Chime on WiiM Speakers
+  description: >-
+    Play a doorbell chime through one or more WiiM (or any announce-capable)
+    speakers when a Nest doorbell is pressed.
+
+    Uses Home Assistant's media_player "announce" feature (announce: true).
+    On WiiM native sources (WiFi streaming, TuneIn, USB, etc.) the firmware
+    ducks the current audio, plays the chime, and auto-resumes the music. If
+    nothing is playing, it simply plays the chime.
+
+    Note: auto-resume is a device feature and does NOT work for Spotify
+    Connect, AirPlay, or Bluetooth sources - on those the chime interrupts
+    playback (it cannot be resumed). This is a WiiM firmware limitation.
+
+    Setup tips:
+      - Put a chime file (e.g. doorbell.mp3) in your Home Assistant media
+        folder (/media) or /config/www, then pick it below.
+      - The doorbell "press" is exposed by the Nest integration as an event
+        entity with device class "doorbell".
+  domain: automation
+  homeassistant:
+    min_version: 2024.8.0
+  author: jpn627
+  input:
+    doorbell_event:
+      name: Nest Doorbell Press Event
+      description: >-
+        The Nest doorbell's event entity (device class "doorbell"). Find it
+        under Settings > Devices & Services > Nest > your doorbell device.
+      selector:
+        entity:
+          filter:
+            - domain: event
+              device_class: doorbell
+          multiple: false
+    target_speakers:
+      name: Speaker(s)
+      description: One or more WiiM (or other announce-capable) media players to chime on.
+      selector:
+        entity:
+          filter:
+            - domain: media_player
+          multiple: true
+    chime_sound:
+      name: Chime Sound
+      description: >-
+        The sound to play. Browse to a file you've placed in /media or
+        /config/www. Most common audio formats (mp3, wav) work.
+      selector:
+        media: {}
+    cooldown:
+      name: Cooldown (seconds)
+      description: >-
+        Ignore repeated doorbell presses for this many seconds after a chime,
+        to avoid a barrage if someone leans on the button. Set to 0 to disable.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
+
+# Make inputs available to templates
+variables:
+  chime: !input chime_sound
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input doorbell_event
+    # An event entity's state is a timestamp that updates on each press.
+    # Ignore transitions to unavailable/unknown so only real presses fire.
+    not_to:
+      - unavailable
+      - unknown
+
+condition: []
+
+action:
+  - action: media_player.play_media
+    target:
+      entity_id: !input target_speakers
+    data:
+      media_content_id: "{{ chime.media_content_id }}"
+      media_content_type: "{{ chime.media_content_type }}"
+      announce: true
+  # Cooldown: with mode "single", holding this run open suppresses repeat
+  # presses for the configured window (skipped when set to 0).
+  - delay:
+      seconds: !input cooldown
