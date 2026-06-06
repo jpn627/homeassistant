@@ -38,173 +38,195 @@ blueprint:
     min_version: 2024.8.0
   author: jpn627
   input:
-    doorbell_event:
-      name: Nest Doorbell Press Event
-      description: >-
-        The Nest doorbell's event entity (device class "doorbell"). Find it
-        under Settings > Devices & Services > Nest > your doorbell device.
-      selector:
-        entity:
-          filter:
-            - domain: event
-              device_class: doorbell
-          multiple: false
-    target_speakers:
-      name: Speaker(s)
-      description: One or more WiiM (or other announce-capable) media players to chime on.
-      selector:
-        entity:
-          filter:
-            - domain: media_player
-          multiple: true
-    chime_sound:
-      name: Chime Sound
-      description: >-
-        The sound to play. Browse to a file you've placed in /media or
-        /config/www. Most common audio formats (mp3, wav) work.
-      selector:
-        media: {}
-    control_volume:
-      name: Set chime volume
-      description: >-
-        Set the speakers to a fixed volume for the chime, then restore their
-        previous volume afterward - so the doorbell stays audible even if you
-        were listening quietly. (With WiiM "announce" the device may apply its
-        own volume handling; this is most predictable on the TV / physical-input
-        path.)
-      default: false
-      selector:
-        boolean: {}
-    chime_volume:
-      name: Daytime chime volume
-      description: Volume for the chime, used when "Set chime volume" is on.
-      default: 60
-      selector:
-        number:
-          min: 1
-          max: 100
-          step: 1
-          unit_of_measurement: "%"
-          mode: slider
-    evening_enabled:
-      name: Use a different chime in the evening
-      description: >-
-        During an evening window, play a different sound and/or volume. This is
-        separate from Quiet Hours (which silences the chime entirely).
-      default: false
-      selector:
-        boolean: {}
-    evening_chime_sound:
-      name: Evening Chime Sound
-      description: >-
-        Sound to play during the evening window. Leave empty to keep the daytime
-        sound but still apply the evening volume below.
-      default: {}
-      selector:
-        media: {}
-    evening_volume:
-      name: Evening chime volume
-      description: Volume during the evening window, used when "Set chime volume" is on.
-      default: 30
-      selector:
-        number:
-          min: 1
-          max: 100
-          step: 1
-          unit_of_measurement: "%"
-          mode: slider
-    evening_start:
-      name: Evening Start
-      description: When the evening chime window begins.
-      default: "20:00:00"
-      selector:
-        time: {}
-    evening_end:
-      name: Evening End
-      description: When the evening chime window ends (can span midnight).
-      default: "07:00:00"
-      selector:
-        time: {}
-    cooldown:
-      name: Cooldown (seconds)
-      description: >-
-        Ignore repeated doorbell presses for this many seconds after a chime,
-        to avoid a barrage if someone leans on the button. Set to 0 to disable.
-      default: 5
-      selector:
-        number:
-          min: 0
-          max: 120
-          step: 1
-          unit_of_measurement: seconds
-          mode: box
-    quiet_hours_enabled:
-      name: Enable Quiet Hours
-      description: When on, the chime is silenced during the time window below.
-      default: false
-      selector:
-        boolean: {}
-    quiet_start:
-      name: Quiet Hours Start
-      description: Time the quiet window begins (can span midnight).
-      default: "22:00:00"
-      selector:
-        time: {}
-    quiet_end:
-      name: Quiet Hours End
-      description: Time the quiet window ends.
-      default: "07:00:00"
-      selector:
-        time: {}
-    restore_source:
-      name: Restore source after chime
-      description: >-
-        After the chime, switch the speaker back to the input it was on (HDMI,
-        optical, line-in, etc.). Useful when chiming over a live TV feed so the
-        TV audio returns. Leave off when chiming over streaming music (the
-        announce feature already handles that).
-      default: false
-      selector:
-        boolean: {}
-    chime_wait:
-      name: Max wait for chime to finish (seconds)
-      description: >-
-        Before restoring the input or resuming playback, the automation waits
-        for the chime to finish. It watches the speaker's playback state and
-        stops waiting as soon as the chime ends; this is the maximum it will
-        wait (and the fallback wait if the speaker doesn't report state). Set a
-        little longer than your longest chime.
-      default: 10
-      selector:
-        number:
-          min: 1
-          max: 60
-          step: 1
-          unit_of_measurement: seconds
-          mode: box
-    pause_target:
-      name: (Optional) Pause this player during the chime
-      description: >-
-        A media player to pause while the chime plays - e.g. your Google TV
-        Streamer (added via the Android TV Remote integration). Note: pausing
-        the Vizio TV itself will NOT pause content playing from an external HDMI
-        device, so target the streamer that is actually playing. Leave empty to
-        disable.
-      default: []
-      selector:
-        entity:
-          filter:
-            - domain: media_player
-          multiple: false
-    pause_resume:
-      name: Resume playback after chime
-      description: >-
-        After the chime, press play to resume what was paused. Off (default)
-        leaves it paused - handy since a doorbell usually means you are getting
-        up to answer, so you will not miss anything.
-      default: false
-      selector:
-        boolean: {}
+    devices:
+      name: Devices
+      icon: mdi:devices
+      input:
+        doorbell_event:
+          name: Nest Doorbell Press Event
+          description: >-
+            The Nest doorbell's event entity (device class "doorbell"). Find it
+            under Settings > Devices & Services > Nest > your doorbell device.
+          selector:
+            entity:
+              filter:
+                - domain: event
+                  device_class: doorbell
+              multiple: false
+        target_speakers:
+          name: Speaker(s)
+          description: One or more WiiM (or other announce-capable) media players to chime on.
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: true
+
+    chime_group:
+      name: Chime
+      icon: mdi:bell-ring
+      collapsed: true
+      input:
+        chime_sound:
+          name: Chime Sound
+          description: >-
+            The sound to play. Browse to a file you've placed in /media or
+            /config/www. Most common audio formats (mp3, wav) work.
+          selector:
+            media: {}
+        control_volume:
+          name: Set chime volume
+          description: >-
+            Set the speakers to a fixed volume for the chime, then restore their
+            previous volume afterward - so the doorbell stays audible even if you
+            were listening quietly. (With WiiM "announce" the device may apply its
+            own volume handling; this is most predictable on the TV / physical-input
+            path.)
+          default: false
+          selector:
+            boolean: {}
+        chime_volume:
+          name: Daytime chime volume
+          description: Volume for the chime, used when "Set chime volume" is on.
+          default: 60
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        evening_enabled:
+          name: Use a different chime in the evening
+          description: >-
+            During an evening window, play a different sound and/or volume. This is
+            separate from Quiet Hours (which silences the chime entirely).
+          default: false
+          selector:
+            boolean: {}
+        evening_chime_sound:
+          name: Evening Chime Sound
+          description: >-
+            Sound to play during the evening window. Leave empty to keep the daytime
+            sound but still apply the evening volume below.
+          default: {}
+          selector:
+            media: {}
+        evening_volume:
+          name: Evening chime volume
+          description: Volume during the evening window, used when "Set chime volume" is on.
+          default: 30
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        evening_start:
+          name: Evening Start
+          description: When the evening chime window begins.
+          default: "20:00:00"
+          selector:
+            time: {}
+        evening_end:
+          name: Evening End
+          description: When the evening chime window ends (can span midnight).
+          default: "07:00:00"
+          selector:
+            time: {}
+
+    timing_group:
+      name: Timing & Quiet Hours
+      icon: mdi:clock-outline
+      collapsed: true
+      input:
+        cooldown:
+          name: Cooldown (seconds)
+          description: >-
+            Ignore repeated doorbell presses for this many seconds after a chime,
+            to avoid a barrage if someone leans on the button. Set to 0 to disable.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: seconds
+              mode: box
+        quiet_hours_enabled:
+          name: Enable Quiet Hours
+          description: When on, the chime is silenced during the time window below.
+          default: false
+          selector:
+            boolean: {}
+        quiet_start:
+          name: Quiet Hours Start
+          description: Time the quiet window begins (can span midnight).
+          default: "22:00:00"
+          selector:
+            time: {}
+        quiet_end:
+          name: Quiet Hours End
+          description: Time the quiet window ends.
+          default: "07:00:00"
+          selector:
+            time: {}
+
+    tv_group:
+      name: TV / Speaker Handling
+      icon: mdi:television
+      collapsed: true
+      input:
+        pause_target:
+          name: (Optional) Pause this player during the chime
+          description: >-
+            A media player to pause while the chime plays - e.g. your Google TV
+            Streamer (added via the Android TV Remote integration). Note: pausing
+            the Vizio TV itself will NOT pause content playing from an external HDMI
+            device, so target the streamer that is actually playing. Leave empty to
+            disable.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+              multiple: false
+        pause_resume:
+          name: Resume playback after chime
+          description: >-
+            After the chime, press play to resume what was paused. Off (default)
+            leaves it paused - handy since a doorbell usually means you are getting
+            up to answer, so you will not miss anything.
+          default: false
+          selector:
+            boolean: {}
+        restore_source:
+          name: Restore source after chime
+          description: >-
+            After the chime, switch the speaker back to the input it was on (HDMI,
+            optical, line-in, etc.). Useful when chiming over a live TV feed so the
+            TV audio returns. Leave off when chiming over streaming music (the
+            announce feature already handles that).
+          default: false
+          selector:
+            boolean: {}
+        chime_wait:
+          name: Max wait for chime to finish (seconds)
+          description: >-
+            Before restoring the input or resuming playback, the automation waits
+            for the chime to finish. It watches the speaker's playback state and
+            stops waiting as soon as the chime ends; this is the maximum it will
+            wait (and the fallback wait if the speaker doesn't report state). Set a
+            little longer than your longest chime.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: seconds
+              mode: box
 
 # Make inputs available to templates
 variables:
