@@ -1,6 +1,6 @@
 blueprint:
   name: Lutron Pico Remote to Fan & Light Controller
-  description: Control a fan and its integrated light using a 5-button Lutron Pico Remote.
+  description: Control a fan and its integrated light using a 5-button Lutron Pico Remote with debouncing.
   domain: automation
   input:
     pico_remote:
@@ -104,5 +104,12 @@ action:
           - action: fan.decrease_speed
             target:
               entity_id: !input fan_target
+
+  # Debounce mechanism: Holds the automation lock for 250ms to ignore bounced signals
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 0
+      milliseconds: 250
 
 mode: single
