@@ -58,16 +58,18 @@ condition: []
 
 action:
   - choose:
-      # ON Button -> Turn Fan On (Low Preset)
+      # ON Button -> Restore last speed, fallback to 33% if unknown or 0
       - conditions:
           - condition: trigger
             id: pico_on
         sequence:
-          - action: fan.turn_on
+          - action: fan.set_percentage
             target:
               entity_id: !input fan_target
             data:
-              preset_mode: low
+              percentage: >-
+                {% set last_speed = state_attr(fan_target, 'percentage') %}
+                {{ last_speed if last_speed and last_speed | int > 0 else 33 }}
 
       # OFF Button -> Turn Fan Off
       - conditions:
