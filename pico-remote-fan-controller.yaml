@@ -27,13 +27,13 @@ trigger:
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
-    subtype: "on"
+    subtype: 'on'
     id: button_on
   - platform: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
-    subtype: "off"
+    subtype: 'off'
     id: button_off
   - platform: device
     device_id: !input pico_remote
