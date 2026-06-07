@@ -1,0 +1,184 @@
+blueprint:
+  name: Leviton Scene Controller - Toggle Light Groups (Matter)
+  description: >-
+    Control two groups of lights with a Leviton Matter scene controller
+    (e.g. D2SCS): one button toggles a "bulbs" group, one toggles a "fixtures"
+    group, and one turns everything off.
+
+    Designed for an all-Matter setup (Leviton controller + Govee lights) so
+    Home Assistant controls the lights locally - low latency, and every light in
+    a group is commanded in a single call.
+
+    Group toggle behavior: if ANY light in a group is on, the whole group turns
+    OFF; if all are off, the whole group turns ON. This keeps the group in sync
+    instead of leaving a mix of on/off lights.
+
+    Finding the right "press" event type: the buttons are Matter event entities.
+    A press updates the entity's "event_type" attribute. The default
+    (initial_press) works for most controllers. If a press does nothing, open
+    Developer Tools > States, press the button, read the button entity's
+    event_type, and set the Options field to match (commonly initial_press,
+    short_release, or multi_press_1).
+  domain: automation
+  homeassistant:
+    min_version: 2024.8.0
+  author: jpn627
+  input:
+    buttons:
+      name: Scene Controller Buttons
+      icon: mdi:gesture-tap-button
+      input:
+        bulbs_button:
+          name: Button - Toggle Bulbs
+          description: The scene controller button (event entity) that toggles the bulbs group.
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
+        fixtures_button:
+          name: Button - Toggle Fixtures
+          description: The scene controller button (event entity) that toggles the fixtures group.
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
+        alloff_button:
+          name: Button - All Off
+          description: The scene controller button (event entity) that turns all lights off.
+          selector:
+            entity:
+              filter:
+                - integration: matter
+                  domain: event
+                  device_class: button
+              multiple: false
+
+    lights:
+      name: Lights
+      icon: mdi:lightbulb-group
+      input:
+        bulb_lights:
+          name: Bulbs
+          description: The bulb light entities to control as a group (e.g. your 5 bulbs).
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+        fixture_lights:
+          name: Fixtures
+          description: The fixture light entities to control as a group (e.g. your 3 fixtures).
+          selector:
+            entity:
+              filter:
+                - domain: light
+              multiple: true
+
+    options:
+      name: Options
+      icon: mdi:cog
+      collapsed: true
+      input:
+        press_event_type:
+          name: Press event type
+          description: >-
+            Which button event_type counts as a "press". Leave at initial_press
+            unless your controller reports a different value (see the blueprint
+            description for how to check).
+          default: initial_press
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - initial_press
+                - short_release
+                - multi_press_1
+                - multi_press_2
+                - long_press
+                - long_release
+
+variables:
+  bulbs: !input bulb_lights
+  fixtures: !input fixture_lights
+  press_type: !input press_event_type
+
+mode: queued
+max: 10
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input bulbs_button
+    not_to:
+      - unavailable
+      - unknown
+    id: toggle_bulbs
+  - platform: state
+    entity_id: !input fixtures_button
+    not_to:
+      - unavailable
+      - unknown
+    id: toggle_fixtures
+  - platform: state
+    entity_id: !input alloff_button
+    not_to:
+      - unavailable
+      - unknown
+    id: all_off
+
+condition:
+  # Only act on the configured press event (the event entity's state is a
+  # timestamp that changes on every press; event_type says which press it was).
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type == press_type }}"
+
+action:
+  - choose:
+      # Toggle the bulbs group: any on -> all off, else all on.
+      - conditions:
+          - condition: trigger
+            id: toggle_bulbs
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ bulbs | select('is_state', 'on') | list | count > 0 }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ bulbs }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ bulbs }}"
+
+      # Toggle the fixtures group: any on -> all off, else all on.
+      - conditions:
+          - condition: trigger
+            id: toggle_fixtures
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ fixtures | select('is_state', 'on') | list | count > 0 }}"
+            then:
+              - action: light.turn_off
+                target:
+                  entity_id: "{{ fixtures }}"
+            else:
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ fixtures }}"
+
+      # All off: turn off both groups in a single call.
+      - conditions:
+          - condition: trigger
+            id: all_off
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: "{{ bulbs + fixtures }}"

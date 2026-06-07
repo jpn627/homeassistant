@@ -1,14 +1,14 @@
 # Home Assistant Blueprints
 
 A collection of [Home Assistant](https://www.home-assistant.io/) automation
-blueprints for Inovelli switches, Lutron Pico remotes, and a Nest doorbell →
-WiiM/soundbar chime.
+blueprints for Inovelli switches, Lutron Pico remotes, and a Leviton Matter
+scene controller.
 
 ## Contents
 
 - [Inovelli White Fan Switch — Tap Sequences with LED Colors](#inovelli-white-fan-switch--tap-sequences-with-led-colors)
 - [Lutron Pico Remote → Fan & Light Controller](#lutron-pico-remote--fan--light-controller)
-- [Nest Doorbell Chime on WiiM Speakers](#nest-doorbell-chime-on-wiim-speakers)
+- [Leviton Scene Controller — Toggle Light Groups (Matter)](#leviton-scene-controller--toggle-light-groups-matter)
 
 ## How to import a blueprint
 
@@ -71,46 +71,35 @@ current speed, then the default speed.
 
 ---
 
-## Nest Doorbell Chime on WiiM Speakers
+## Leviton Scene Controller — Toggle Light Groups (Matter)
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjpn627%2Fhomeassistant%2Fblob%2Fmain%2Fnest-doorbell-wiim-chime.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fjpn627%2Fhomeassistant%2Fblob%2Fmain%2Fleviton-scene-controller-light-groups.yaml)
 
-**File:** [`nest-doorbell-wiim-chime.yaml`](./nest-doorbell-wiim-chime.yaml)
+**File:** [`leviton-scene-controller-light-groups.yaml`](./leviton-scene-controller-light-groups.yaml)
 
-Play a chime through one or more WiiM (or any announce-capable) media players
-when a Nest doorbell is pressed. Built around the `media_player` **announce**
-feature so the chime ducks/overlays current audio, with extra handling for
-TV / physical-input setups.
+Control two groups of lights with a Leviton Matter scene controller (e.g.
+D2SCS): one button toggles a **bulbs** group, one toggles a **fixtures** group,
+and one turns **everything off**. Built for an all-Matter setup (Leviton
+controller + Govee lights) so Home Assistant drives the lights locally — low
+latency, with every light in a group commanded in a single call.
 
 **Features**
 
-- Chime via `announce: true` (ducks and auto-resumes on WiiM native sources)
-- **Chime sound** picker, optional **chime volume** (restored afterward)
-- **Time-of-day chime**: a different sound and/or volume during an evening
-  window (overnight-aware)
-- **Quiet Hours** to silence the chime entirely during set times
-- **Cooldown** to ignore repeated presses
-- **Restore source after chime** — switches the speaker back to its prior input
-  (HDMI / optical / line-in), so live TV audio returns
-- **Pause a TV / streamer** during the chime (e.g. a Google TV Streamer via the
-  Android TV Remote integration), with optional resume (default: stay paused)
-- **Waits for the chime to actually finish** (state-watched, with a fallback)
-  before restoring input / resuming
+- Three button → action mappings (toggle bulbs, toggle fixtures, all off)
+- **Smart group toggle**: if any light in a group is on, the whole group turns
+  off; if all are off, it turns on (keeps the group in sync)
+- Triggers on the buttons' Matter `event` entities (the reliable path, since
+  Matter device-triggers aren't consistently exposed)
+- Configurable **press event type** (default `initial_press`) for controllers
+  that report a different value
 
 **Setup notes**
 
-- Put a chime file (e.g. `doorbell.mp3`) in `/media` or `/config/www`, then
-  pick it as the Chime Sound.
-- To pause content on an external HDMI device, target the **streamer that's
-  actually playing** (e.g. the Google TV Streamer) — pausing the TV itself
-  won't pause external HDMI playback.
-
-**Caveats (WiiM firmware, not the blueprint)**
-
-- Auto-resume does **not** work for Spotify Connect / AirPlay / Bluetooth
-  sources — the chime interrupts and can't resume those.
-- With `announce`, the device may apply its own volume handling, so the chime
-  volume control is most predictable on the TV / physical-input path.
+- The D2SCS exposes its **top three buttons** as event entities (the bottom
+  button is line power and can't be used).
+- If a press does nothing, open **Developer Tools → States**, press the button,
+  read the entity's `event_type`, and set the Options field to match (commonly
+  `initial_press`, `short_release`, or `multi_press_1`).
 
 ---
 
