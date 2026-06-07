@@ -88,10 +88,13 @@ latency, with every light in a group commanded in a single call.
 - Three button → action mappings (toggle bulbs, toggle fixtures, all off)
 - **Smart group toggle**: if any light in a group is on, the whole group turns
   off; if all are off, it turns on (keeps the group in sync)
+- **Tap on → full brightness** (configurable on level)
+- **Hold to dim**: hold a group button to dim that group down while held;
+  release to stop. Stops at a configurable floor (configurable step/interval)
 - Triggers on the buttons' Matter `event` entities (the reliable path, since
   Matter device-triggers aren't consistently exposed)
-- Configurable **press event type** (default `initial_press`) for controllers
-  that report a different value
+- Configurable **tap event type** (default `initial_press`) for controllers
+  that report a different value; hold-to-dim uses `long_press`/`long_release`
 
 **Setup notes**
 

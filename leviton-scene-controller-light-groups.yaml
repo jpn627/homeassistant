@@ -5,20 +5,25 @@ blueprint:
     (e.g. D2SCS): one button toggles a "bulbs" group, one toggles a "fixtures"
     group, and one turns everything off.
 
+    Tap a group button to turn it on at full brightness (or off). Hold a group
+    button to dim that group down while held; release to stop. Dimming stops at
+    a configurable floor so the lights never hold all the way off - tap off then
+    on to get back to full.
+
     Designed for an all-Matter setup (Leviton controller + Govee lights) so
     Home Assistant controls the lights locally - low latency, and every light in
     a group is commanded in a single call.
 
     Group toggle behavior: if ANY light in a group is on, the whole group turns
-    OFF; if all are off, the whole group turns ON. This keeps the group in sync
-    instead of leaving a mix of on/off lights.
+    OFF; if all are off, the whole group turns ON at the configured on level.
 
     Finding the right "press" event type: the buttons are Matter event entities.
     A press updates the entity's "event_type" attribute. The default
-    (initial_press) works for most controllers. If a press does nothing, open
+    (initial_press) works for most controllers. If a tap does nothing, open
     Developer Tools > States, press the button, read the button entity's
     event_type, and set the Options field to match (commonly initial_press,
-    short_release, or multi_press_1).
+    short_release, or multi_press_1). Hold-to-dim uses the standard long_press /
+    long_release events.
   domain: automation
   homeassistant:
     min_version: 2024.8.0
@@ -29,8 +34,8 @@ blueprint:
       icon: mdi:gesture-tap-button
       input:
         bulbs_button:
-          name: Button - Toggle Bulbs
-          description: The scene controller button (event entity) that toggles the bulbs group.
+          name: Button - Bulbs (tap toggle / hold dim)
+          description: The scene controller button (event entity) for the bulbs group.
           selector:
             entity:
               filter:
@@ -39,8 +44,8 @@ blueprint:
                   device_class: button
               multiple: false
         fixtures_button:
-          name: Button - Toggle Fixtures
-          description: The scene controller button (event entity) that toggles the fixtures group.
+          name: Button - Fixtures (tap toggle / hold dim)
+          description: The scene controller button (event entity) for the fixtures group.
           selector:
             entity:
               filter:
@@ -65,7 +70,9 @@ blueprint:
       input:
         bulb_lights:
           name: Bulbs
-          description: The bulb light entities to control as a group (e.g. your 5 bulbs).
+          description: >-
+            The bulb light entities to control as a group (your 5 bulbs), or a
+            single Light Group helper.
           selector:
             entity:
               filter:
@@ -73,12 +80,70 @@ blueprint:
               multiple: true
         fixture_lights:
           name: Fixtures
-          description: The fixture light entities to control as a group (e.g. your 3 fixtures).
+          description: >-
+            The fixture light entities to control as a group (your 3 fixtures),
+            or a single Light Group helper.
           selector:
             entity:
               filter:
                 - domain: light
               multiple: true
+
+    brightness:
+      name: Brightness & Dimming
+      icon: mdi:brightness-6
+      collapsed: true
+      input:
+        on_level:
+          name: On brightness
+          description: Brightness a group is set to when tapped on.
+          default: 100
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        enable_hold_dim:
+          name: Enable hold-to-dim
+          description: Hold a group button to dim that group down while held.
+          default: true
+          selector:
+            boolean: {}
+        dim_step:
+          name: Dim step
+          description: How much to lower brightness on each step while held.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 50
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        dim_interval:
+          name: Dim step interval
+          description: Time between dim steps while held (smaller = faster dimming).
+          default: 0.3
+          selector:
+            number:
+              min: 0.1
+              max: 2
+              step: 0.1
+              unit_of_measurement: seconds
+              mode: slider
+        dim_floor:
+          name: Minimum dim level
+          description: Hold-to-dim won't go below this brightness.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 50
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
 
     options:
       name: Options
@@ -86,9 +151,9 @@ blueprint:
       collapsed: true
       input:
         press_event_type:
-          name: Press event type
+          name: Tap event type
           description: >-
-            Which button event_type counts as a "press". Leave at initial_press
+            Which button event_type counts as a "tap". Leave at initial_press
             unless your controller reports a different value (see the blueprint
             description for how to check).
           default: initial_press
@@ -100,13 +165,14 @@ blueprint:
                 - short_release
                 - multi_press_1
                 - multi_press_2
-                - long_press
-                - long_release
 
 variables:
   bulbs: !input bulb_lights
   fixtures: !input fixture_lights
   press_type: !input press_event_type
+  enable_hold_dim: !input enable_hold_dim
+  dim_step: !input dim_step
+  dim_floor: !input dim_floor
 
 mode: queued
 max: 10
@@ -118,13 +184,13 @@ trigger:
     not_to:
       - unavailable
       - unknown
-    id: toggle_bulbs
+    id: bulbs
   - platform: state
     entity_id: !input fixtures_button
     not_to:
       - unavailable
       - unknown
-    id: toggle_fixtures
+    id: fixtures
   - platform: state
     entity_id: !input alloff_button
     not_to:
@@ -132,18 +198,16 @@ trigger:
       - unknown
     id: all_off
 
-condition:
-  # Only act on the configured press event (the event entity's state is a
-  # timestamp that changes on every press; event_type says which press it was).
-  - condition: template
-    value_template: "{{ trigger.to_state.attributes.event_type == press_type }}"
+condition: []
 
 action:
   - choose:
-      # Toggle the bulbs group: any on -> all off, else all on.
+      # --- BULBS: tap to toggle (on -> full, any on -> off) ---
       - conditions:
           - condition: trigger
-            id: toggle_bulbs
+            id: bulbs
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == press_type }}"
         sequence:
           - if:
               - condition: template
@@ -156,11 +220,43 @@ action:
               - action: light.turn_on
                 target:
                   entity_id: "{{ bulbs }}"
+                data:
+                  brightness_pct: !input on_level
 
-      # Toggle the fixtures group: any on -> all off, else all on.
+      # --- BULBS: hold to dim down while held ---
       - conditions:
           - condition: trigger
-            id: toggle_fixtures
+            id: bulbs
+          - condition: template
+            value_template: "{{ enable_hold_dim and trigger.to_state.attributes.event_type == 'long_press' }}"
+        sequence:
+          - repeat:
+              while:
+                # group still on, button still held, and above the floor
+                - condition: template
+                  value_template: "{{ bulbs | select('is_state', 'on') | list | count > 0 }}"
+                - condition: template
+                  value_template: "{{ is_state_attr(trigger.entity_id, 'event_type', 'long_press') }}"
+                - condition: template
+                  value_template: >-
+                    {% set br = expand(bulbs) | selectattr('state', 'equalto', 'on')
+                       | map(attribute='attributes.brightness') | reject('none') | list %}
+                    {{ (br | max if br | count > 0 else 0) / 2.55 > dim_floor }}
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: "{{ bulbs }}"
+                  data:
+                    brightness_step_pct: "{{ -1 * dim_step }}"
+                - delay:
+                    seconds: !input dim_interval
+
+      # --- FIXTURES: tap to toggle (on -> full, any on -> off) ---
+      - conditions:
+          - condition: trigger
+            id: fixtures
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == press_type }}"
         sequence:
           - if:
               - condition: template
@@ -173,11 +269,42 @@ action:
               - action: light.turn_on
                 target:
                   entity_id: "{{ fixtures }}"
+                data:
+                  brightness_pct: !input on_level
 
-      # All off: turn off both groups in a single call.
+      # --- FIXTURES: hold to dim down while held ---
+      - conditions:
+          - condition: trigger
+            id: fixtures
+          - condition: template
+            value_template: "{{ enable_hold_dim and trigger.to_state.attributes.event_type == 'long_press' }}"
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: "{{ fixtures | select('is_state', 'on') | list | count > 0 }}"
+                - condition: template
+                  value_template: "{{ is_state_attr(trigger.entity_id, 'event_type', 'long_press') }}"
+                - condition: template
+                  value_template: >-
+                    {% set br = expand(fixtures) | selectattr('state', 'equalto', 'on')
+                       | map(attribute='attributes.brightness') | reject('none') | list %}
+                    {{ (br | max if br | count > 0 else 0) / 2.55 > dim_floor }}
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: "{{ fixtures }}"
+                  data:
+                    brightness_step_pct: "{{ -1 * dim_step }}"
+                - delay:
+                    seconds: !input dim_interval
+
+      # --- ALL OFF: tap to turn everything off ---
       - conditions:
           - condition: trigger
             id: all_off
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == press_type }}"
         sequence:
           - action: light.turn_off
             target:
