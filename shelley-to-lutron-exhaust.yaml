@@ -1,0 +1,123 @@
+blueprint:
+  name: Shower Fan Auto-On (Humidity Spike → Lutron Switch)
+  author: Claude
+  description: >
+    Automatically turns a bathroom exhaust fan ON when humidity rises quickly
+    (someone started a shower) and turns it OFF again once the room has dried
+    out — with a guaranteed minimum run time and a hard maximum so it can't run
+    forever.
+
+    Built for a Shelly H&T Gen3 humidity sensor and a Lutron Caséta on/off
+    switch, but works with any humidity sensor + switch/light/fan entity.
+
+    REQUIRES a "Statistics" helper that reports the *change* in humidity over a
+    short window (state characteristic = "Change", max age = 5 min). See the
+    setup notes that came with this blueprint.
+
+  domain: automation
+  input:
+    humidity_change_sensor:
+      name: Humidity CHANGE sensor (Statistics helper)
+      description: >
+        The Statistics helper whose value is the change in humidity over the
+        last few minutes — NOT the raw humidity sensor.
+      selector:
+        entity:
+          domain: sensor
+
+    humidity_sensor:
+      name: Raw humidity sensor (Shelly H&T)
+      description: The actual % humidity reading from the Shelly H&T Gen3.
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    fan_switch:
+      name: Exhaust fan switch (Lutron Caséta)
+      description: The Caséta on/off switch that controls the fan.
+      selector:
+        target:
+          entity:
+            domain: switch
+
+    rise_threshold:
+      name: Humidity rise needed to turn ON (%)
+      description: >
+        Turn the fan on when humidity rises at least this many points over the
+        Statistics window. Start at 5; lower toward 3 if it misses showers,
+        raise it if it triggers on its own.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.5
+          unit_of_measurement: "%"
+          mode: slider
+
+    min_run_duration:
+      name: Guaranteed minimum run time
+      description: The fan always runs at least this long once triggered.
+      default:
+        hours: 0
+        minutes: 20
+        seconds: 0
+      selector:
+        duration:
+
+    max_extra_duration:
+      name: Maximum extra run time (waiting for the room to dry)
+      description: >
+        After the minimum, the fan keeps running until humidity falls back near
+        its pre-shower level — but never longer than this. Max total runtime =
+        minimum + this.
+      default:
+        hours: 1
+        minutes: 40
+        seconds: 0
+      selector:
+        duration:
+
+    return_offset:
+      name: Turn-off margin above starting humidity (%)
+      description: >
+        The room counts as "dry" once humidity is within this many points of
+        its pre-shower level. Larger = turns off sooner.
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 15
+          step: 0.5
+          unit_of_measurement: "%"
+          mode: slider
+
+variables:
+  humidity_sensor: !input humidity_sensor
+  return_offset: !input return_offset
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input humidity_change_sensor
+    above: !input rise_threshold
+
+action:
+  - variables:
+      now_h: "{{ states(humidity_sensor) | float(0) }}"
+      change_now: "{{ trigger.to_state.state | float(0) }}"
+      # Humidity just before the shower started ≈ current minus the recent rise
+      baseline: "{{ (now_h - change_now) | round(1) }}"
+  - service: homeassistant.turn_on
+    target: !input fan_switch
+  - delay: !input min_run_duration
+  - wait_template: >
+      {{ states(humidity_sensor) | float(999)
+         <= (baseline + (return_offset | float(0))) }}
+    timeout: !input max_extra_duration
+    continue_on_timeout: true
+  - service: homeassistant.turn_off
+    target: !input fan_switch
