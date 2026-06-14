@@ -1,123 +1,83 @@
 blueprint:
-  name: Shower Fan Auto-On (Humidity Spike → Lutron Switch)
-  author: Claude
+  name: Shower Fan Auto-On (Absolute Humidity)
   description: >
-    Automatically turns a bathroom exhaust fan ON when humidity rises quickly
-    (someone started a shower) and turns it OFF again once the room has dried
-    out — with a guaranteed minimum run time and a hard maximum so it can't run
-    forever.
-
-    Built for a Shelly H&T Gen3 humidity sensor and a Lutron Caséta on/off
-    switch, but works with any humidity sensor + switch/light/fan entity.
-
-    REQUIRES a "Statistics" helper that reports the *change* in humidity over a
-    short window (state characteristic = "Change", max age = 5 min). See the
-    setup notes that came with this blueprint.
-
+    Turns on a Lutron Caseta switch (exhaust fan) when humidity from a
+    Shelly H&T Gen3 rises above a threshold, and turns it off once humidity
+    falls back down (with a safety max-runtime). Designed for sleepy
+    battery sensors that only report on large changes. For best results,
+    power the Shelly via USB or lower its reporting threshold to ~1%.
   domain: automation
   input:
-    humidity_change_sensor:
-      name: Humidity CHANGE sensor (Statistics helper)
-      description: >
-        The Statistics helper whose value is the change in humidity over the
-        last few minutes — NOT the raw humidity sensor.
-      selector:
-        entity:
-          domain: sensor
-
     humidity_sensor:
-      name: Raw humidity sensor (Shelly H&T)
-      description: The actual % humidity reading from the Shelly H&T Gen3.
+      name: Humidity Sensor
+      description: The Shelly H&T Gen3 humidity sensor entity.
       selector:
         entity:
           domain: sensor
           device_class: humidity
-
     fan_switch:
-      name: Exhaust fan switch (Lutron Caséta)
-      description: The Caséta on/off switch that controls the fan.
+      name: Exhaust Fan Switch
+      description: The Lutron Caseta switch controlling the exhaust fan.
       selector:
-        target:
-          entity:
-            domain: switch
-
-    rise_threshold:
-      name: Humidity rise needed to turn ON (%)
+        entity:
+          domain: switch
+    on_threshold:
+      name: Turn-On Humidity (%)
+      description: Turn the fan on when humidity rises above this.
+      default: 68
+      selector:
+        number: { min: 40, max: 95, unit_of_measurement: "%", mode: slider }
+    off_threshold:
+      name: Turn-Off Humidity (%)
       description: >
-        Turn the fan on when humidity rises at least this many points over the
-        Statistics window. Start at 5; lower toward 3 if it misses showers,
-        raise it if it triggers on its own.
-      default: 5
+        Turn the fan off once humidity falls back below this. Should be a
+        few points below your turn-on value (and ideally near your normal
+        ambient humidity).
+      default: 58
       selector:
-        number:
-          min: 1
-          max: 20
-          step: 0.5
-          unit_of_measurement: "%"
-          mode: slider
-
-    min_run_duration:
-      name: Guaranteed minimum run time
-      description: The fan always runs at least this long once triggered.
-      default:
-        hours: 0
-        minutes: 20
-        seconds: 0
+        number: { min: 30, max: 90, unit_of_measurement: "%", mode: slider }
+    max_runtime:
+      name: Maximum Run Time
+      description: >
+        Safety cap. Fan turns off after this long even if humidity never
+        drops below the off threshold (e.g. slow-reporting sensor).
+      default: { hours: 2 }
       selector:
         duration:
-
-    max_extra_duration:
-      name: Maximum extra run time (waiting for the room to dry)
-      description: >
-        After the minimum, the fan keeps running until humidity falls back near
-        its pre-shower level — but never longer than this. Max total runtime =
-        minimum + this.
-      default:
-        hours: 1
-        minutes: 40
-        seconds: 0
-      selector:
-        duration:
-
-    return_offset:
-      name: Turn-off margin above starting humidity (%)
-      description: >
-        The room counts as "dry" once humidity is within this many points of
-        its pre-shower level. Larger = turns off sooner.
-      default: 3
-      selector:
-        number:
-          min: 0
-          max: 15
-          step: 0.5
-          unit_of_measurement: "%"
-          mode: slider
 
 variables:
+  off_threshold: !input off_threshold
   humidity_sensor: !input humidity_sensor
-  return_offset: !input return_offset
-
-mode: restart
-max_exceeded: silent
 
 trigger:
   - platform: numeric_state
-    entity_id: !input humidity_change_sensor
-    above: !input rise_threshold
+    entity_id: !input humidity_sensor
+    above: !input on_threshold
+    id: humid_high
+  - platform: numeric_state
+    entity_id: !input humidity_sensor
+    below: !input off_threshold
+    id: humid_low
 
 action:
-  - variables:
-      now_h: "{{ states(humidity_sensor) | float(0) }}"
-      change_now: "{{ trigger.to_state.state | float(0) }}"
-      # Humidity just before the shower started ≈ current minus the recent rise
-      baseline: "{{ (now_h - change_now) | round(1) }}"
-  - service: homeassistant.turn_on
-    target: !input fan_switch
-  - delay: !input min_run_duration
-  - wait_template: >
-      {{ states(humidity_sensor) | float(999)
-         <= (baseline + (return_offset | float(0))) }}
-    timeout: !input max_extra_duration
-    continue_on_timeout: true
-  - service: homeassistant.turn_off
-    target: !input fan_switch
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: humid_high
+        sequence:
+          - service: switch.turn_on
+            target: { entity_id: !input fan_switch }
+          # Safety cutoff: wait for humidity to drop OR max runtime
+          - wait_template: "{{ states(humidity_sensor) | float(100) < off_threshold }}"
+            timeout: !input max_runtime
+            continue_on_timeout: true
+          - service: switch.turn_off
+            target: { entity_id: !input fan_switch }
+      - conditions:
+          - condition: trigger
+            id: humid_low
+        sequence:
+          - service: switch.turn_off
+            target: { entity_id: !input fan_switch }
+
+mode: restart
